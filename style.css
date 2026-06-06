@@ -1,0 +1,165 @@
+/* ── reset ─────────────────────────────────── */
+*{margin:0;padding:0;box-sizing:border-box;}
+
+html,body{
+  width:100%;height:100%;
+  overflow:hidden;
+  background:#1a1008;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Georgia',serif;
+  touch-action:none;          /* no browser gestures */
+  -webkit-user-select:none;
+  user-select:none;
+}
+
+/* ── white overlay (initially hidden) ──── */
+#whiteOverlay{
+  position:fixed;inset:0;
+  background:#fff;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity .8s ease;
+  z-index:100;
+}
+#whiteOverlay.active{
+  opacity:1;
+  pointer-events:all;
+}
+
+/* ── scene container ───────────────────── */
+#scene{
+  position:relative;
+  width:min(90vw,420px);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+}
+
+/* ── mantelpiece ───────────────────────── */
+#mantel{
+  width:110%;
+  height:22px;
+  background:linear-gradient(180deg,#5a3a1a 0%,#3e2510 100%);
+  border-radius:6px 6px 0 0;
+  box-shadow:0 4px 10px rgba(0,0,0,.6);
+  z-index:2;
+}
+
+/* ── fireplace bricks ─────────────────── */
+#fireplace{
+  width:100%;
+  aspect-ratio:1/1;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,transparent 48px,
+      #1a0a04 48px,#1a0a04 50px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,transparent 78px,
+      #1a0a04 78px,#1a0a04 80px
+    ),
+    #7a3222;
+  border-radius:0 0 8px 8px;
+  display:flex;align-items:center;justify-content:center;
+  padding:10%;
+  position:relative;
+  box-shadow:inset 0 0 40px rgba(0,0,0,.7);
+}
+
+/* ── hearth (inner dark area) ──────────── */
+#hearth{
+  width:100%;height:100%;
+  background:radial-gradient(ellipse at bottom,#1e1e1e,#0a0a0a);
+  border-radius:6px;
+  position:relative;
+  overflow:hidden;
+  border:3px solid #2a1a0a;
+  cursor:pointer;
+}
+
+/* ── logs ──────────────────────────────── */
+.log{
+  position:absolute;
+  border-radius:8px;
+  background:linear-gradient(90deg,#5e3b1a,#7a4e28,#5e3b1a);
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.5);
+}
+.log1{width:70%;height:14%;bottom:10%;left:10%;transform:rotate(-4deg);}
+.log2{width:65%;height:13%;bottom:22%;left:18%;transform:rotate(6deg);}
+.log3{width:55%;height:12%;bottom:16%;left:25%;transform:rotate(-12deg);}
+
+/* ── prompt text ───────────────────────── */
+#prompt{
+  position:absolute;
+  top:8%;left:0;width:100%;
+  text-align:center;
+  color:#96001890;
+  font-size:clamp(14px,4vw,22px);
+  font-weight:700;
+  letter-spacing:1px;
+  opacity:0;
+  transition:opacity .5s ease;
+  pointer-events:none;
+  text-shadow:0 0 6px #96001860;
+  z-index:5;
+}
+#prompt.visible{
+  opacity:1;
+  color:#960018;
+  text-shadow:0 0 12px #ff4500aa;
+}
+
+/* ── canvas (fills hearth) ─────────────── */
+#drawCanvas{
+  position:absolute;inset:0;
+  width:100%;height:100%;
+  z-index:4;
+}
+
+/* ── tools ─────────────────────────────── */
+#tools{
+  position:absolute;
+  right:-52px;bottom:0;
+  display:flex;flex-direction:column;
+  align-items:center;
+  gap:0;
+  height:70%;
+}
+
+.tool{
+  width:6px;
+  background:#555;
+  border-radius:2px;
+}
+.poker{
+  height:90%;
+  background:linear-gradient(180deg,#888,#444);
+  border-bottom:6px solid #aaa;
+  border-radius:2px 2px 0 0;
+}
+.brush{
+  height:80%;
+  background:linear-gradient(180deg,#777,#333);
+  margin-top:-70%;
+  margin-left:14px;
+  border-radius:2px;
+  border-bottom:10px solid #8B6914;
+}
+.shovel{
+  height:75%;
+  background:linear-gradient(180deg,#777,#444);
+  margin-top:-60%;
+  margin-left:-14px;
+  border-radius:2px;
+  border-bottom:12px solid #666;
+  width:8px;
+}
+.tool-base{
+  width:40px;height:6px;
+  background:#444;
+  border-radius:3px;
+  position:absolute;
+  bottom:0;
+}
