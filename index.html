@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Caminetto</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <!-- white flash overlay -->
+  <div id="whiteOverlay"></div>
+
+  <div id="scene">
+    <!-- mantelpiece -->
+    <div id="mantel"></div>
+
+    <!-- fireplace outer frame (bricks) -->
+    <div id="fireplace">
+
+      <!-- dark hearth interior -->
+      <div id="hearth">
+        <!-- logs -->
+        <div class="log log1"></div>
+        <div class="log log2"></div>
+        <div class="log log3"></div>
+
+        <!-- prompt text -->
+        <div id="prompt">Sai come accendermi</div>
+
+        <!-- canvas for drawing – same size as hearth -->
+        <canvas id="drawCanvas"></canvas>
+      </div>
+    </div>
+
+    <!-- fireplace tools (right side) -->
+    <div id="tools">
+      <div class="tool poker"></div>
+      <div class="tool brush"></div>
+      <div class="tool shovel"></div>
+      <div class="tool-base"></div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
