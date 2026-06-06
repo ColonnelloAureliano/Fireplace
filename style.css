@@ -7,12 +7,12 @@ html,body{
   background:#1a1008;
   display:flex;align-items:center;justify-content:center;
   font-family:'Georgia',serif;
-  touch-action:none;          /* no browser gestures */
+  touch-action:none;
   -webkit-user-select:none;
   user-select:none;
 }
 
-/* ── white overlay (initially hidden) ──── */
+/* ── white overlay ───────────────────────── */
 #whiteOverlay{
   position:fixed;inset:0;
   background:#fff;
@@ -26,18 +26,18 @@ html,body{
   pointer-events:all;
 }
 
-/* ── scene container ───────────────────── */
+/* ── scene ───────────────────────────────── */
 #scene{
   position:relative;
-  width:min(90vw,420px);
+  width:min(92vw,420px);
   display:flex;
   flex-direction:column;
   align-items:center;
 }
 
-/* ── mantelpiece ───────────────────────── */
+/* ── mantel ──────────────────────────────── */
 #mantel{
-  width:110%;
+  width:108%;
   height:22px;
   background:linear-gradient(180deg,#5a3a1a 0%,#3e2510 100%);
   border-radius:6px 6px 0 0;
@@ -45,89 +45,104 @@ html,body{
   z-index:2;
 }
 
-/* ── fireplace bricks ─────────────────── */
+/* ── fireplace grid ─────────────────────── */
 #fireplace{
   width:100%;
   aspect-ratio:1/1;
-  background:
-    repeating-linear-gradient(
-      0deg,
-      transparent,transparent 48px,
-      #1a0a04 48px,#1a0a04 50px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent,transparent 78px,
-      #1a0a04 78px,#1a0a04 80px
-    ),
-    #7a3222;
+  display:grid;
+  grid-template-columns: 12% 1fr 3px 1fr 3px 1fr 12%;
+  grid-template-rows:    9% 3px 1fr 3px 1fr 3px 9%;
+  gap:0;
+  background:#0d0500;
   border-radius:0 0 8px 8px;
-  display:flex;align-items:center;justify-content:center;
-  padding:10%;
-  position:relative;
-  box-shadow:inset 0 0 40px rgba(0,0,0,.7);
+  overflow:hidden;
 }
 
-/* ── hearth (inner dark area) ──────────── */
+/* ── brick base style ────────────────────── */
+.brick{
+  background:linear-gradient(145deg,#8a3a22,#7a3222,#6a2a1a);
+  border-radius:3px;
+  box-shadow:
+    inset 0 1px 2px rgba(255,200,150,0.15),
+    inset 0 -1px 2px rgba(0,0,0,0.3);
+}
+
+/* top bricks (row 1, 3 bricks) */
+.bt1{grid-column:1/3; grid-row:1;}
+.bt2{grid-column:4;   grid-row:1;}
+.bt3{grid-column:6/8; grid-row:1;}
+
+/* bottom bricks (row 7, 3 bricks) */
+.bb1{grid-column:1/3; grid-row:7;}
+.bb2{grid-column:4;   grid-row:7;}
+.bb3{grid-column:6/8; grid-row:7;}
+
+/* left bricks (col 1, two rows with gap) */
+.bl1{grid-column:1; grid-row:3;}
+.bl2{grid-column:1; grid-row:5;}
+
+/* right bricks (col 7, two rows with gap) */
+.br1{grid-column:7; grid-row:3;}
+.br2{grid-column:7; grid-row:5;}
+
+/* ── hearth (center big cell) ─────────────── */
 #hearth{
-  width:100%;height:100%;
-  background:radial-gradient(ellipse at bottom,#1e1e1e,#0a0a0a);
-  border-radius:6px;
+  grid-column:2/7;
+  grid-row:2/7;
+  background:radial-gradient(ellipse at bottom,#111,#050505);
   position:relative;
   overflow:hidden;
-  border:3px solid #2a1a0a;
   cursor:pointer;
 }
 
-/* ── logs ──────────────────────────────── */
+/* ── logs ──────────────────────────────────── */
 .log{
   position:absolute;
   border-radius:8px;
   background:linear-gradient(90deg,#5e3b1a,#7a4e28,#5e3b1a);
   box-shadow:inset 0 2px 4px rgba(0,0,0,.5);
+  z-index:1;
 }
-.log1{width:70%;height:14%;bottom:10%;left:10%;transform:rotate(-4deg);}
-.log2{width:65%;height:13%;bottom:22%;left:18%;transform:rotate(6deg);}
-.log3{width:55%;height:12%;bottom:16%;left:25%;transform:rotate(-12deg);}
+.log1{width:70%;height:10%;bottom:8%;left:8%;transform:rotate(-4deg);}
+.log2{width:60%;height:9%;bottom:18%;left:20%;transform:rotate(6deg);}
+.log3{width:50%;height:8%;bottom:12%;left:28%;transform:rotate(-12deg);}
 
-/* ── prompt text ───────────────────────── */
+/* ── prompt ─────────────────────────────────── */
 #prompt{
   position:absolute;
-  top:8%;left:0;width:100%;
+  top:6%;left:0;width:100%;
   text-align:center;
-  color:#96001890;
-  font-size:clamp(14px,4vw,22px);
+  color:#960018;
+  font-size:clamp(13px,3.8vw,20px);
   font-weight:700;
   letter-spacing:1px;
   opacity:0;
   transition:opacity .5s ease;
   pointer-events:none;
-  text-shadow:0 0 6px #96001860;
+  text-shadow:0 0 8px #96001860;
   z-index:5;
 }
 #prompt.visible{
   opacity:1;
-  color:#960018;
-  text-shadow:0 0 12px #ff4500aa;
+  text-shadow:0 0 14px #ff4500aa;
 }
 
-/* ── canvas (fills hearth) ─────────────── */
+/* ── canvas ─────────────────────────────────── */
 #drawCanvas{
   position:absolute;inset:0;
   width:100%;height:100%;
   z-index:4;
 }
 
-/* ── tools ─────────────────────────────── */
+/* ── tools ──────────────────────────────────── */
 #tools{
   position:absolute;
-  right:-52px;bottom:0;
+  right:-48px;bottom:0;
   display:flex;flex-direction:column;
   align-items:center;
   gap:0;
   height:70%;
 }
-
 .tool{
   width:6px;
   background:#555;
