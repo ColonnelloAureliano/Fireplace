@@ -8,47 +8,37 @@
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <!-- white flash overlay -->
   <div id="whiteOverlay"></div>
 
   <div id="scene">
-    <!-- mantelpiece -->
     <div id="mantel"></div>
 
-    <!-- fireplace brick frame + hearth -->
     <div id="fireplace">
-      <!-- top bricks -->
       <div class="brick bt bt1"></div>
       <div class="brick bt bt2"></div>
       <div class="brick bt bt3"></div>
 
-      <!-- left bricks -->
       <div class="brick bl bl1"></div>
-      <div class="brick bl bl2"></div>
 
-      <!-- dark hearth (canvas inside) -->
       <div id="hearth">
-        <!-- logs -->
-        <div class="log log1"></div>
-        <div class="log log2"></div>
-        <div class="log log3"></div>
-        <!-- prompt -->
+        <div id="soot"></div>
+        <div class="log log1"><span class="grain"></span></div>
+        <div class="log log2"><span class="grain"></span></div>
+        <div class="log log3"><span class="grain"></span></div>
+        <div id="ash"></div>
         <div id="prompt">Sai come accendermi</div>
-        <!-- drawing canvas -->
         <canvas id="drawCanvas"></canvas>
       </div>
 
-      <!-- right bricks -->
       <div class="brick br br1"></div>
+      <div class="brick bl bl2"></div>
       <div class="brick br br2"></div>
 
-      <!-- bottom bricks -->
       <div class="brick bb bb1"></div>
       <div class="brick bb bb2"></div>
       <div class="brick bb bb3"></div>
     </div>
 
-    <!-- fireplace tools -->
     <div id="tools">
       <div class="tool poker"></div>
       <div class="tool brush"></div>
