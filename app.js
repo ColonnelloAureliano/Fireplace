@@ -1,12 +1,12 @@
 (function(){
   "use strict";
 
-  /* ── DOM refs ─────────────────────────── */
-  const hearth   = document.getElementById("hearth");
-  const canvas   = document.getElementById("drawCanvas");
-  const ctx      = canvas.getContext("2d");
-  const prompt   = document.getElementById("prompt");
-  const overlay  = document.getElementById("whiteOverlay");
+  /* ── DOM ──────────────────────────────── */
+  const hearth  = document.getElementById("hearth");
+  const canvas  = document.getElementById("drawCanvas");
+  const ctx     = canvas.getContext("2d");
+  const prompt  = document.getElementById("prompt");
+  const overlay = document.getElementById("whiteOverlay");
 
   /* ── state ────────────────────────────── */
   let activated     = false;
@@ -16,13 +16,38 @@
   let idleTimer     = null;
   const IDLE_MS     = 1200;
 
-  /* ── canvas sizing ────────────────────── */
+  /* ── canvas size ──────────────────────── */
   function resizeCanvas(){
     canvas.width  = hearth.clientWidth;
     canvas.height = hearth.clientHeight;
+    computeZones();
   }
   window.addEventListener("resize", resizeCanvas);
-  resizeCanvas();
+
+  /* ═══════════════════════════════════════════════════════════
+     ██  DYNAMIC ZONE COMPUTATION FROM BRICK POSITIONS
+     ═══════════════════════════════════════════════════════════ */
+  let zones = { CL: 0.25, CR: 0.75, MID: 0.50 };
+
+  function computeZones(){
+    const hR = hearth.getBoundingClientRect();
+    if(hR.width === 0 || hR.height === 0) return;
+
+    const bt1 = document.querySelector(".bt1").getBoundingClientRect();
+    const bt2 = document.querySelector(".bt2").getBoundingClientRect();
+    const bt3 = document.querySelector(".bt3").getBoundingClientRect();
+    const bl1 = document.querySelector(".bl1").getBoundingClientRect();
+    const bl2 = document.querySelector(".bl2").getBoundingClientRect();
+
+    zones = {
+      CL:  ((bt1.right + bt2.left) / 2 - hR.left) / hR.width,
+      CR:  ((bt2.right + bt3.left) / 2 - hR.left) / hR.width,
+      MID: ((bl1.bottom + bl2.top) / 2 - hR.top) / hR.height
+    };
+    console.log("Zones:", JSON.stringify(zones));
+  }
+
+  window.addEventListener("load", ()=>{ resizeCanvas(); computeZones(); });
 
   /* ── pointer helper ───────────────────── */
   function ptrXY(e){
@@ -31,21 +56,16 @@
     return { x: t.clientX - r.left, y: t.clientY - r.top };
   }
 
-  /* ── activate on first tap ────────────── */
+  /* ── activate ─────────────────────────── */
   hearth.addEventListener("pointerdown", function(){
-    if(!activated){
-      activated = true;
-      prompt.classList.add("visible");
-    }
+    if(!activated){ activated = true; prompt.classList.add("visible"); }
   });
 
   /* ── drawing ──────────────────────────── */
   function startDraw(e){
     if(!activated) return;
-    e.preventDefault();
-    drawing = true;
-    currentStroke = [];
-    currentStroke.push(ptrXY(e));
+    e.preventDefault(); drawing = true;
+    currentStroke = []; currentStroke.push(ptrXY(e));
     clearTimeout(idleTimer);
   }
   function moveDraw(e){
@@ -96,11 +116,7 @@
     let n = 0;
     const step = ()=>{
       n++;
-      if(n > 30){
-        ctx.clearRect(0,0,canvas.width,canvas.height);
-        if(cb) cb();
-        return;
-      }
+      if(n > 30){ ctx.clearRect(0,0,canvas.width,canvas.height); if(cb) cb(); return; }
       ctx.save();
       ctx.globalCompositeOperation = "destination-out";
       ctx.fillStyle = "rgba(0,0,0,0.07)";
@@ -113,113 +129,75 @@
 
   /* ═══════════════════════════════════════════════════════════
      ██  ZONE-BASED  "H"  RECOGNITION
-     ══════════════════════════════════════════════════════════
+     ═══════════════════════════════════════════════════════════
 
-     The brick frame creates a natural 3×3 grid in the hearth:
+     ┌──────────┬──────────────┬──────────┐
+     │   L-T    │     C-T      │   R-T    │
+     ├──────────┼──────────────┼──────────┤
+     │   L-M    │     C-M      │   R-M    │ ← crossbar
+     ├──────────┼──────────────┼──────────┤
+     │   L-B    │     C-B      │   R-B    │
+     └──────────┴──────────────┴──────────┘
+       0 → CL    CL → CR       CR → 1
+  */
 
-     Vertical splits (from gaps between top/bottom bricks):
-       colLeft   : 0.00 – 0.30
-       colCenter : 0.30 – 0.70
-       colRight  : 0.70 – 1.00
-
-     Horizontal split (from gap between side bricks):
-       rowTop    : 0.00 – 0.35
-       rowMid    : 0.35 – 0.65
-       rowBot    : 0.65 – 1.00
-
-     ┌──────┬──────────┬──────┐
-     │ L-T  │   C-T    │ R-T  │
-     ├──────┼──────────┼──────┤
-     │ L-M  │   C-M    │ R-M  │  ← crossbar zone
-     ├──────┼──────────┼──────┤
-     │ L-B  │   C-B    │ R-B  │
-     └──────┴──────────┴──────┘
-
-     H pattern:
-       ✓ ink: LT, LM, LB  (left stroke)
-       ✓ ink: RT, RM, RB  (right stroke)
-       ✓ ink: CM           (crossbar)
-       ✗ empty: CT         (rejects A, M)
-       ✗ empty: CB         (rejects 8, 0)
-   */
-
-  const CL = 0.30, CR = 0.70;
-  const RT_LINE = 0.35, RB_LINE = 0.65;
-
-  function zoneCount(pts, W, H, x0f, x1f, y0f, y1f){
-    const x0 = x0f*W, x1 = x1f*W, y0 = y0f*H, y1 = y1f*H;
-    let n = 0;
-    for(let i = 0; i < pts.length; i++){
-      if(pts[i].x >= x0 && pts[i].x < x1 &&
-         pts[i].y >= y0 && pts[i].y < y1) n++;
-    }
-    return n;
-  }
+  const BAND = 0.14;
 
   function zoneDensity(pts, W, H, x0f, x1f, y0f, y1f){
-    const area = (x1f-x0f)*W * (y1f-y0f)*H;
-    return area > 0 ? zoneCount(pts,W,H,x0f,x1f,y0f,y1f)/area : 0;
+    const x0=x0f*W, x1=x1f*W, y0=y0f*H, y1=y1f*H;
+    let n=0;
+    for(let i=0;i<pts.length;i++){
+      if(pts[i].x>=x0 && pts[i].x<x1 && pts[i].y>=y0 && pts[i].y<y1) n++;
+    }
+    const area = (x1-x0)*(y1-y0);
+    return area>0 ? n/area : 0;
   }
 
-  /* ── main check ───────────────────────── */
   function checkPassword(){
     const all = strokes.flat();
     if(all.length < 20){ resetScene(); return; }
 
     const W = canvas.width, H = canvas.height;
+    const {CL, CR, MID} = zones;
+    const MT = Math.max(0, MID - BAND);
+    const MB = Math.min(1, MID + BAND);
+
     let score = 0;
     const log = [];
 
-    /* 9 zone densities */
-    const LT = zoneDensity(all,W,H, 0, CL, 0,       RT_LINE);
-    const CT = zoneDensity(all,W,H, CL,CR, 0,       RT_LINE);
-    const RTop=zoneDensity(all,W,H, CR, 1, 0,       RT_LINE);
+    const LT = zoneDensity(all,W,H,  0, CL,  0, MT);
+    const CT = zoneDensity(all,W,H, CL, CR,  0, MT);
+    const RT = zoneDensity(all,W,H, CR,  1,  0, MT);
+    const LM = zoneDensity(all,W,H,  0, CL, MT, MB);
+    const CM = zoneDensity(all,W,H, CL, CR, MT, MB);
+    const RM = zoneDensity(all,W,H, CR,  1, MT, MB);
+    const LB = zoneDensity(all,W,H,  0, CL, MB,  1);
+    const CB = zoneDensity(all,W,H, CL, CR, MB,  1);
+    const RB = zoneDensity(all,W,H, CR,  1, MB,  1);
 
-    const LM = zoneDensity(all,W,H, 0, CL, RT_LINE, RB_LINE);
-    const CM = zoneDensity(all,W,H, CL,CR, RT_LINE, RB_LINE);
-    const RM = zoneDensity(all,W,H, CR, 1, RT_LINE, RB_LINE);
-
-    const LB = zoneDensity(all,W,H, 0, CL, RB_LINE, 1);
-    const CB = zoneDensity(all,W,H, CL,CR, RB_LINE, 1);
-    const RBot=zoneDensity(all,W,H, CR, 1, RB_LINE, 1);
-
-    /* adaptive thresholds based on max density */
-    const maxD = Math.max(LT,CT,RTop,LM,CM,RM,LB,CB,RBot);
+    const maxD  = Math.max(LT,CT,RT,LM,CM,RM,LB,CB,RB);
     const inkTh = maxD * 0.15;
     const empTh = maxD * 0.25;
 
-    /* 1-3: left column has ink */
     if(LT>inkTh) score++; log.push(`LT=${LT.toFixed(4)} ${LT>inkTh?"✓":"✗"}`);
     if(LM>inkTh) score++; log.push(`LM=${LM.toFixed(4)} ${LM>inkTh?"✓":"✗"}`);
     if(LB>inkTh) score++; log.push(`LB=${LB.toFixed(4)} ${LB>inkTh?"✓":"✗"}`);
-
-    /* 4-6: right column has ink */
-    if(RTop>inkTh) score++; log.push(`RT=${RTop.toFixed(4)} ${RTop>inkTh?"✓":"✗"}`);
-    if(RM>inkTh)   score++; log.push(`RM=${RM.toFixed(4)} ${RM>inkTh?"✓":"✗"}`);
-    if(RBot>inkTh) score++; log.push(`RB=${RBot.toFixed(4)} ${RBot>inkTh?"✓":"✗"}`);
-
-    /* 7: center-middle has ink (crossbar) */
+    if(RT>inkTh) score++; log.push(`RT=${RT.toFixed(4)} ${RT>inkTh?"✓":"✗"}`);
+    if(RM>inkTh) score++; log.push(`RM=${RM.toFixed(4)} ${RM>inkTh?"✓":"✗"}`);
+    if(RB>inkTh) score++; log.push(`RB=${RB.toFixed(4)} ${RB>inkTh?"✓":"✗"}`);
     if(CM>inkTh) score++; log.push(`CM=${CM.toFixed(4)} ${CM>inkTh?"✓":"✗"}`);
-
-    /* 8: center-top EMPTY (rejects A, M) */
-    if(CT<empTh) score++; log.push(`CT_empty=${CT.toFixed(4)} ${CT<empTh?"✓":"✗"}`);
-
-    /* 9: center-bottom EMPTY (rejects 8, 0, B) */
-    if(CB<empTh) score++; log.push(`CB_empty=${CB.toFixed(4)} ${CB<empTh?"✓":"✗"}`);
+    if(CT<empTh) score++; log.push(`CT_emp=${CT.toFixed(4)} ${CT<empTh?"✓":"✗"}`);
+    if(CB<empTh) score++; log.push(`CB_emp=${CB.toFixed(4)} ${CB<empTh?"✓":"✗"}`);
 
     const pass = score >= 7;
     log.push(`th:ink=${inkTh.toFixed(4)} emp=${empTh.toFixed(4)}`);
     log.push(`SCORE=${score}/9 → ${pass?"✅ PASS":"❌ FAIL"}`);
     console.log("H Recognition:", log.join(" | "));
 
-    if(pass){
-      overlay.classList.add("active");
-    } else {
-      resetScene();
-    }
+    if(pass){ overlay.classList.add("active"); }
+    else    { resetScene(); }
   }
 
-  /* ── reset ─────────────────────────────── */
   function resetScene(){
     fadeTrail(()=>{
       strokes = [];
