@@ -24,14 +24,14 @@
   window.addEventListener("resize", resizeCanvas);
   resizeCanvas();
 
-  /* ── pointer position helper ──────────── */
+  /* ── pointer helper ───────────────────── */
   function ptrXY(e){
     const r = canvas.getBoundingClientRect();
     const t = e.touches ? e.touches[0] : e;
     return { x: t.clientX - r.left, y: t.clientY - r.top };
   }
 
-  /* ── activate prompt on first tap ─────── */
+  /* ── activate on first tap ────────────── */
   hearth.addEventListener("pointerdown", function(){
     if(!activated){
       activated = true;
@@ -73,7 +73,7 @@
   canvas.addEventListener("touchmove",  moveDraw,  {passive:false});
   canvas.addEventListener("touchend",   endDraw);
 
-  /* ── ember glow effect ────────────────── */
+  /* ── ember glow ───────────────────────── */
   function drawEmber(p){
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
@@ -91,7 +91,7 @@
     ctx.restore();
   }
 
-  /* ── fade trail animation ─────────────── */
+  /* ── fade trail ───────────────────────── */
   function fadeTrail(cb){
     let n = 0;
     const step = ()=>{
@@ -112,102 +112,104 @@
   }
 
   /* ═══════════════════════════════════════════════════════════
-     ██  "H"  RECOGNITION  ENGINE
-     ═══════════════════════════════════════════════════════════ */
+     ██  ZONE-BASED  "H"  RECOGNITION
+     ══════════════════════════════════════════════════════════
 
-  function rasterise(pts, G, bb){
-    const grid = Array.from({length:G}, ()=> new Float32Array(G));
-    const bw = bb.maxX - bb.minX || 1;
-    const bh = bb.maxY - bb.minY || 1;
-    pts.forEach(p=>{
-      const gx = Math.min(G-1, Math.max(0, Math.floor((p.x - bb.minX) / bw * G)));
-      const gy = Math.min(G-1, Math.max(0, Math.floor((p.y - bb.minY) / bh * G)));
-      grid[gy][gx] = 1;
-      if(gx>0)   grid[gy][gx-1] = Math.max(grid[gy][gx-1], 0.6);
-      if(gx<G-1) grid[gy][gx+1] = Math.max(grid[gy][gx+1], 0.6);
-      if(gy>0)   grid[gy-1][gx] = Math.max(grid[gy-1][gx], 0.6);
-      if(gy<G-1) grid[gy+1][gx] = Math.max(grid[gy+1][gx], 0.6);
-    });
-    return grid;
+     The brick frame creates a natural 3×3 grid in the hearth:
+
+     Vertical splits (from gaps between top/bottom bricks):
+       colLeft   : 0.00 – 0.30
+       colCenter : 0.30 – 0.70
+       colRight  : 0.70 – 1.00
+
+     Horizontal split (from gap between side bricks):
+       rowTop    : 0.00 – 0.35
+       rowMid    : 0.35 – 0.65
+       rowBot    : 0.65 – 1.00
+
+     ┌──────┬──────────┬──────┐
+     │ L-T  │   C-T    │ R-T  │
+     ├──────┼──────────┼──────┤
+     │ L-M  │   C-M    │ R-M  │  ← crossbar zone
+     ├──────┼──────────┼──────┤
+     │ L-B  │   C-B    │ R-B  │
+     └──────┴──────────┴──────┘
+
+     H pattern:
+       ✓ ink: LT, LM, LB  (left stroke)
+       ✓ ink: RT, RM, RB  (right stroke)
+       ✓ ink: CM           (crossbar)
+       ✗ empty: CT         (rejects A, M)
+       ✗ empty: CB         (rejects 8, 0)
+   */
+
+  const CL = 0.30, CR = 0.70;
+  const RT_LINE = 0.35, RB_LINE = 0.65;
+
+  function zoneCount(pts, W, H, x0f, x1f, y0f, y1f){
+    const x0 = x0f*W, x1 = x1f*W, y0 = y0f*H, y1 = y1f*H;
+    let n = 0;
+    for(let i = 0; i < pts.length; i++){
+      if(pts[i].x >= x0 && pts[i].x < x1 &&
+         pts[i].y >= y0 && pts[i].y < y1) n++;
+    }
+    return n;
   }
 
-  function zoneDensity(grid, r0, r1, c0, c1){
-    let s = 0;
-    const area = (r1 - r0 + 1) * (c1 - c0 + 1);
-    for(let r = r0; r <= r1; r++)
-      for(let c = c0; c <= c1; c++)
-        s += (grid[r] && grid[r][c]) || 0;
-    return area > 0 ? s / area : 0;
+  function zoneDensity(pts, W, H, x0f, x1f, y0f, y1f){
+    const area = (x1f-x0f)*W * (y1f-y0f)*H;
+    return area > 0 ? zoneCount(pts,W,H,x0f,x1f,y0f,y1f)/area : 0;
   }
 
-  function bbox(pts){
-    let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity;
-    pts.forEach(p=>{
-      if(p.x<minX) minX=p.x; if(p.x>maxX) maxX=p.x;
-      if(p.y<minY) minY=p.y; if(p.y>maxY) maxY=p.y;
-    });
-    return {minX, maxX, minY, maxY};
-  }
-
-  /* ── main recognition ──────────────────── */
+  /* ── main check ───────────────────────── */
   function checkPassword(){
     const all = strokes.flat();
-    if(all.length < 15){ resetScene(); return; }
+    if(all.length < 20){ resetScene(); return; }
 
-    const bb = bbox(all);
-    const bw = bb.maxX - bb.minX;
-    const bh = bb.maxY - bb.minY;
-    if(bw < 20 || bh < 20){ resetScene(); return; }
-
-    const G = 10;
-    const grid = rasterise(all, G, bb);
-
+    const W = canvas.width, H = canvas.height;
     let score = 0;
     const log = [];
 
-    /* 1: left column (vertical left stroke) */
-    const leftCol = zoneDensity(grid, 0, G-1, 0, 2);
-    if(leftCol > 0.25) score++;
-    log.push(`leftCol=${leftCol.toFixed(2)} ${leftCol>0.25?"✓":"✗"}`);
+    /* 9 zone densities */
+    const LT = zoneDensity(all,W,H, 0, CL, 0,       RT_LINE);
+    const CT = zoneDensity(all,W,H, CL,CR, 0,       RT_LINE);
+    const RTop=zoneDensity(all,W,H, CR, 1, 0,       RT_LINE);
 
-    /* 2: right column (vertical right stroke) */
-    const rightCol = zoneDensity(grid, 0, G-1, 7, 9);
-    if(rightCol > 0.25) score++;
-    log.push(`rightCol=${rightCol.toFixed(2)} ${rightCol>0.25?"✓":"✗"}`);
+    const LM = zoneDensity(all,W,H, 0, CL, RT_LINE, RB_LINE);
+    const CM = zoneDensity(all,W,H, CL,CR, RT_LINE, RB_LINE);
+    const RM = zoneDensity(all,W,H, CR, 1, RT_LINE, RB_LINE);
 
-    /* 3: middle crossbar */
-    const midBar = zoneDensity(grid, 3, 6, 2, 7);
-    if(midBar > 0.20) score++;
-    log.push(`midBar=${midBar.toFixed(2)} ${midBar>0.20?"✓":"✗"}`);
+    const LB = zoneDensity(all,W,H, 0, CL, RB_LINE, 1);
+    const CB = zoneDensity(all,W,H, CL,CR, RB_LINE, 1);
+    const RBot=zoneDensity(all,W,H, CR, 1, RB_LINE, 1);
 
-    /* 4: top-center EMPTY → rejects A, M, W */
-    const topCenter = zoneDensity(grid, 0, 2, 3, 6);
-    if(topCenter < 0.18) score++;
-    log.push(`topCenter_empty=${topCenter.toFixed(2)} ${topCenter<0.18?"✓":"✗"}`);
+    /* adaptive thresholds based on max density */
+    const maxD = Math.max(LT,CT,RTop,LM,CM,RM,LB,CB,RBot);
+    const inkTh = maxD * 0.15;
+    const empTh = maxD * 0.25;
 
-    /* 5: bottom-center EMPTY → rejects 8, 0, B */
-    const botCenter = zoneDensity(grid, 7, 9, 3, 6);
-    if(botCenter < 0.18) score++;
-    log.push(`botCenter_empty=${botCenter.toFixed(2)} ${botCenter<0.18?"✓":"✗"}`);
+    /* 1-3: left column has ink */
+    if(LT>inkTh) score++; log.push(`LT=${LT.toFixed(4)} ${LT>inkTh?"✓":"✗"}`);
+    if(LM>inkTh) score++; log.push(`LM=${LM.toFixed(4)} ${LM>inkTh?"✓":"✗"}`);
+    if(LB>inkTh) score++; log.push(`LB=${LB.toFixed(4)} ${LB>inkTh?"✓":"✗"}`);
 
-    /* 6: top-left has ink */
-    const topLeft = zoneDensity(grid, 0, 3, 0, 3);
-    if(topLeft > 0.15) score++;
-    log.push(`topLeft=${topLeft.toFixed(2)} ${topLeft>0.15?"✓":"✗"}`);
+    /* 4-6: right column has ink */
+    if(RTop>inkTh) score++; log.push(`RT=${RTop.toFixed(4)} ${RTop>inkTh?"✓":"✗"}`);
+    if(RM>inkTh)   score++; log.push(`RM=${RM.toFixed(4)} ${RM>inkTh?"✓":"✗"}`);
+    if(RBot>inkTh) score++; log.push(`RB=${RBot.toFixed(4)} ${RBot>inkTh?"✓":"✗"}`);
 
-    /* 7: top-right has ink */
-    const topRight = zoneDensity(grid, 0, 3, 7, 9);
-    if(topRight > 0.15) score++;
-    log.push(`topRight=${topRight.toFixed(2)} ${topRight>0.15?"✓":"✗"}`);
+    /* 7: center-middle has ink (crossbar) */
+    if(CM>inkTh) score++; log.push(`CM=${CM.toFixed(4)} ${CM>inkTh?"✓":"✗"}`);
 
-    /* 8: aspect ratio */
-    const aspect = bw / bh;
-    if(aspect > 0.4 && aspect < 2.0) score++;
-    log.push(`aspect=${aspect.toFixed(2)} ${(aspect>0.4&&aspect<2.0)?"✓":"✗"}`);
+    /* 8: center-top EMPTY (rejects A, M) */
+    if(CT<empTh) score++; log.push(`CT_empty=${CT.toFixed(4)} ${CT<empTh?"✓":"✗"}`);
 
-    /* ── decision ──────────────────────────── */
-    const pass = score >= 6;
-    log.push(`SCORE=${score}/8 → ${pass?"✅ PASS":"❌ FAIL"}`);
+    /* 9: center-bottom EMPTY (rejects 8, 0, B) */
+    if(CB<empTh) score++; log.push(`CB_empty=${CB.toFixed(4)} ${CB<empTh?"✓":"✗"}`);
+
+    const pass = score >= 7;
+    log.push(`th:ink=${inkTh.toFixed(4)} emp=${empTh.toFixed(4)}`);
+    log.push(`SCORE=${score}/9 → ${pass?"✅ PASS":"❌ FAIL"}`);
     console.log("H Recognition:", log.join(" | "));
 
     if(pass){
