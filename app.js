@@ -1,6 +1,11 @@
 (function(){
   "use strict";
 
+  /* inject ember pulse animation */
+  var styleEl = document.createElement("style");
+  styleEl.textContent = "@keyframes emberPulse{0%{transform:translate(-50%,-50%) scale(1);box-shadow:0 0 20px 8px rgba(255,120,20,0.6),0 0 40px 16px rgba(255,80,0,0.3),inset 0 -3px 6px rgba(0,0,0,0.3),inset 0 2px 4px rgba(255,255,200,0.3);}100%{transform:translate(-50%,-50%) scale(1.15);box-shadow:0 0 30px 12px rgba(255,120,20,0.9),0 0 60px 24px rgba(255,80,0,0.5),inset 0 -3px 6px rgba(0,0,0,0.3),inset 0 2px 4px rgba(255,255,200,0.4);}}";
+  document.head.appendChild(styleEl);
+
   var hearth   = document.getElementById("hearth");
   var canvas   = document.getElementById("drawCanvas");
   var ctx      = canvas.getContext("2d");
@@ -23,6 +28,10 @@
 
   var STORY = "L\u2019Isola Viscontea, situata a Lecco dove il Lago di Como torna a essere il fiume Adda, \u00e8 un piccolo gioiello di origine artificiale: nacque nel quindicesimo secolo come accumulo di detriti e materiali di scavo durante i lavori di costruzione e ampliamento del vicino Ponte Azzone Visconti. Sulla sua funzione originaria ci sono pareri discordanti: alcuni storici pensano fosse un piccolo avamposto di controllo per la navigazione e i dazi sul fiume, altri una semplice casa di pescatori.";
 
+  /* voice params: deep old man */
+  var VOICE_RATE  = 0.75;
+  var VOICE_PITCH = 0.6;
+
   function resizeCanvas(){
     if(fireOn) return;
     canvas.width  = hearth.clientWidth;
@@ -44,12 +53,10 @@
     zones.CL  = ((b1.right + b2.left) / 2 - hR.left) / hR.width;
     zones.CR  = ((b2.right + b3.left) / 2 - hR.left) / hR.width;
     zones.MID = ((l1.bottom + l2.top) / 2  - hR.top)  / hR.height;
-    console.log("Zones:", JSON.stringify(zones));
   }
-
   window.addEventListener("load", function(){ resizeCanvas(); computeZones(); });
 
-  /* === AUDIO CONTEXT PRIMING (separate from speech!) === */
+  /* === AUDIO CONTEXT PRIMING === */
   function primeAudioCtx(){
     if(!globalAudioCtx){
       try{
@@ -93,8 +100,7 @@
 
   function startDraw(e){
     if(!activated || fireOn) return;
-    e.preventDefault();
-    drawing = true;
+    e.preventDefault(); drawing = true;
     currentStroke = [ptrXY(e)];
     clearTimeout(idleTimer);
   }
@@ -345,8 +351,8 @@
     for(var k = 0; k < len; k++) hd[k] = Math.random() * 2 - 1;
     var hS = a.createBufferSource(); hS.buffer = hB; hS.loop = true;
     var bp = a.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 3000; bp.Q.value = 2;
-    var hG = a.createGain(); hG.gain.value = 0.06;
-    hS.connect(bp); bp.connect(hG); hG.connect(a.destination); hS.start();
+    var hGn = a.createGain(); hGn.gain.value = 0.06;
+    hS.connect(bp); bp.connect(hGn); hGn.connect(a.destination); hS.start();
 
     function pop(){
       try{
@@ -391,20 +397,44 @@
   var italianVoice = null;
   var resumeTimer  = null;
 
+  /* known male Italian TTS voice names across platforms */
+  var MALE_NAMES = ["luca", "giorgio", "marco", "andrea", "paolo", "carlo",
+                    "cosimo", "google italiano", "male"];
+
   function findVoice(){
     if(typeof speechSynthesis === "undefined") return;
     try{
-      var v = speechSynthesis.getVoices();
-      if(!v || !v.length) return;
-      for(var i = 0; i < v.length; i++){
-        if(v[i].lang === "it-IT"){ italianVoice = v[i]; break; }
-      }
-      if(!italianVoice){
-        for(var j = 0; j < v.length; j++){
-          if(v[j].lang && v[j].lang.indexOf("it") === 0){ italianVoice = v[j]; break; }
+      var voices = speechSynthesis.getVoices();
+      if(!voices || !voices.length) return;
+
+      var itVoices = [];
+      for(var i = 0; i < voices.length; i++){
+        if(voices[i].lang === "it-IT" || (voices[i].lang && voices[i].lang.indexOf("it") === 0)){
+          itVoices.push(voices[i]);
         }
       }
-      if(italianVoice) console.log("Voice:", italianVoice.name);
+      if(!itVoices.length) return;
+
+      /* try to find a male voice */
+      for(var m = 0; m < MALE_NAMES.length; m++){
+        for(var v = 0; v < itVoices.length; v++){
+          if(itVoices[v].name.toLowerCase().indexOf(MALE_NAMES[m]) >= 0){
+            italianVoice = itVoices[v];
+            console.log("Male voice:", italianVoice.name);
+            return;
+          }
+        }
+      }
+
+      /* log all Italian voices for debug */
+      console.log("Italian voices (" + itVoices.length + "):");
+      for(var x = 0; x < itVoices.length; x++){
+        console.log("  " + itVoices[x].name + " [" + itVoices[x].lang + "]");
+      }
+
+      /* fallback: last voice (often male on iOS) or first */
+      italianVoice = itVoices.length > 1 ? itVoices[itVoices.length - 1] : itVoices[0];
+      console.log("Fallback voice:", italianVoice.name);
     }catch(e){}
   }
 
@@ -423,59 +453,94 @@
     resumeTimer = setTimeout(keepAlive, 8000);
   }
 
+  /* create utterance with nonno settings */
+  function makeUtter(){
+    if(!italianVoice) findVoice();
+    var utter = new SpeechSynthesisUtterance(STORY);
+    utter.lang = "it-IT";
+    utter.rate = VOICE_RATE;
+    utter.pitch = VOICE_PITCH;
+    utter.volume = 0.85;
+    if(italianVoice) utter.voice = italianVoice;
+
+    utter.onstart = function(){
+      speechStarted = true;
+      console.log("Speech CONFIRMED started");
+      /* remove ember if still visible */
+      var old = document.getElementById("listenBtn");
+      if(old){ old.style.opacity = "0"; setTimeout(function(){ try{ old.remove(); }catch(x){} }, 400); }
+    };
+    utter.onend = function(){
+      clearTimeout(resumeTimer);
+      console.log("Narration ended, loop in 4s");
+      setTimeout(function(){
+        if(fireOn){ try{ speakStory(); }catch(e){} }
+      }, 4000);
+    };
+    utter.onerror = function(ev){
+      clearTimeout(resumeTimer);
+      console.warn("Speech error:", ev.error);
+      speechStarted = false;
+      showListenButton();
+    };
+    return utter;
+  }
+
   function speakStory(){
     if(!fireOn) return;
     if(typeof speechSynthesis === "undefined") return;
-    if(!italianVoice) findVoice();
     try{
-      var utter = new SpeechSynthesisUtterance(STORY);
-      utter.lang = "it-IT"; utter.rate = 0.78; utter.pitch = 0.7; utter.volume = 0.85;
-      if(italianVoice) utter.voice = italianVoice;
-      utter.onend = function(){
-        clearTimeout(resumeTimer);
-        setTimeout(function(){ if(fireOn){ try{ speakStory(); keepAlive(); }catch(e){} } }, 4000);
-      };
-      utter.onerror = function(){ clearTimeout(resumeTimer); speechStarted = false; showListenButton(); };
+      var utter = makeUtter();
+      /* NOTE: speechStarted is set ONLY in onstart callback, not here */
       speechSynthesis.speak(utter);
-      speechStarted = true;
       clearTimeout(resumeTimer);
       keepAlive();
     }catch(e){}
   }
 
+  /* === GLOWING EMBER BUTTON === */
   function showListenButton(){
     if(speechStarted) return;
     var old = document.getElementById("listenBtn");
     if(old) old.remove();
+
     var btn = document.createElement("div");
     btn.id = "listenBtn";
-    btn.innerHTML = "&#x1F50A;";
-    btn.style.cssText = "position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);z-index:10;font-size:48px;cursor:pointer;opacity:0.85;filter:drop-shadow(0 0 12px rgba(255,150,50,0.8));transition:opacity 0.3s;animation:glowPulse 2s ease-in-out infinite alternate;";
+    /* pure CSS incandescent ball - no emoji */
+    btn.style.cssText = [
+      "position:absolute",
+      "top:38%",
+      "left:50%",
+      "width:54px",
+      "height:54px",
+      "transform:translate(-50%,-50%)",
+      "z-index:10",
+      "cursor:pointer",
+      "border-radius:50%",
+      "background:radial-gradient(circle at 40% 35%, #fff8e0 0%, #ffcc33 15%, #ff8800 40%, #cc3300 70%, #661100 100%)",
+      "box-shadow:0 0 20px 8px rgba(255,120,20,0.6), 0 0 40px 16px rgba(255,80,0,0.3), inset 0 -3px 6px rgba(0,0,0,0.3), inset 0 2px 4px rgba(255,255,200,0.3)",
+      "animation:emberPulse 1.2s ease-in-out infinite alternate",
+      "transition:opacity 0.4s, transform 0.4s"
+    ].join(";") + ";";
     hearth.appendChild(btn);
+    console.log("Ember button shown");
 
     function handleTap(e){
       e.preventDefault();
       e.stopPropagation();
       btn.style.opacity = "0";
       btn.style.pointerEvents = "none";
-      setTimeout(function(){ try{ btn.remove(); }catch(ex){} }, 300);
+      setTimeout(function(){ try{ btn.remove(); }catch(ex){} }, 400);
 
+      /* DIRECT speak in gesture handler - no cancel, no setTimeout */
       if(typeof speechSynthesis !== "undefined"){
         try{
-          if(!italianVoice) findVoice();
-          var utter = new SpeechSynthesisUtterance(STORY);
-          utter.lang = "it-IT"; utter.rate = 0.78; utter.pitch = 0.7; utter.volume = 0.85;
-          if(italianVoice) utter.voice = italianVoice;
-          utter.onend = function(){
-            clearTimeout(resumeTimer);
-            setTimeout(function(){ if(fireOn){ try{ speakStory(); keepAlive(); }catch(ex){} } }, 4000);
-          };
-          utter.onerror = function(){ clearTimeout(resumeTimer); speechStarted = false; showListenButton(); };
+          var utter = makeUtter();
           speechSynthesis.speak(utter);
-          speechStarted = true;
           clearTimeout(resumeTimer);
           keepAlive();
-        }catch(ex){}
+          console.log("Speaking from ember tap");
+        }catch(ex){ console.error("Ember speak err:", ex); }
       }
     }
 
@@ -485,13 +550,16 @@
 
   function tryAutoNarration(){
     if(typeof speechSynthesis === "undefined") return;
+    console.log("Trying auto-narration...");
     speakStory();
+
+    /* check after 2s if onstart fired */
     setTimeout(function(){
-      if(!speechStarted || !speechSynthesis.speaking){
-        speechStarted = false;
+      if(!speechStarted){
+        console.warn("Auto-narration failed, showing ember");
         showListenButton();
       }
-    }, 1500);
+    }, 2000);
   }
 
 })();
