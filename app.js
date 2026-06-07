@@ -2,25 +2,26 @@
   "use strict";
 
   /* ── DOM ──────────────────────────────── */
-  const hearth  = document.getElementById("hearth");
-  const canvas  = document.getElementById("drawCanvas");
-  const ctx     = canvas.getContext("2d");
-  const prompt  = document.getElementById("prompt");
-  const glow    = document.getElementById("glow");
-  const logs    = document.querySelectorAll(".log");
-  const bricks  = document.querySelectorAll(".brick");
+  var hearth  = document.getElementById("hearth");
+  var canvas  = document.getElementById("drawCanvas");
+  var ctx     = canvas.getContext("2d");
+  var promptEl= document.getElementById("prompt");
+  var glow    = document.getElementById("glow");
+  var logs    = document.querySelectorAll(".log");
+  var bricks  = document.querySelectorAll(".brick");
 
   /* ── state ────────────────────────────── */
-  let activated     = false;
-  let drawing       = false;
-  let fireOn        = false;
-  let strokes       = [];
-  let currentStroke = [];
-  let idleTimer     = null;
-  const IDLE_MS     = 1200;
+  var activated     = false;
+  var drawing       = false;
+  var fireOn        = false;
+  var strokes       = [];
+  var currentStroke = [];
+  var idleTimer     = null;
+  var IDLE_MS       = 1200;
+  var particles     = [];
 
   /* ── narration text ───────────────────── */
-  const STORY = "L\u2019Isola Viscontea, situata a Lecco dove il Lago di Como torna a essere il fiume Adda, \u00e8 un piccolo gioiello di origine artificiale: nacque nel XV secolo come accumulo di detriti e materiali di scavo durante i lavori di costruzione e ampliamento del vicino Ponte Azzone Visconti. Sulla sua funzione originaria ci sono pareri discordanti: alcuni storici pensano fosse un piccolo avamposto di controllo per la navigazione e i dazi sul fiume, altri una semplice casa di pescatori.";
+  var STORY = "L\u2019Isola Viscontea, situata a Lecco dove il Lago di Como torna a essere il fiume Adda, \u00e8 un piccolo gioiello di origine artificiale: nacque nel quindicesimo secolo come accumulo di detriti e materiali di scavo durante i lavori di costruzione e ampliamento del vicino Ponte Azzone Visconti. Sulla sua funzione originaria ci sono pareri discordanti: alcuni storici pensano fosse un piccolo avamposto di controllo per la navigazione e i dazi sul fiume, altri una semplice casa di pescatori.";
 
   /* ── canvas size ──────────────────────── */
   function resizeCanvas(){
@@ -31,50 +32,52 @@
   }
   window.addEventListener("resize", resizeCanvas);
 
-  /* ═══════════════════════════════════════
-     ██  DYNAMIC ZONES FROM BRICKS
-     ═══════════════════════════════════════ */
-  let zones = { CL:0.25, CR:0.75, MID:0.50 };
+  /* ── zones from brick positions ──────── */
+  var zones = { CL:0.25, CR:0.75, MID:0.50 };
 
   function computeZones(){
-    const hR = hearth.getBoundingClientRect();
+    var hR = hearth.getBoundingClientRect();
     if(!hR.width) return;
-    const bt1 = document.querySelector(".bt1").getBoundingClientRect();
-    const bt2 = document.querySelector(".bt2").getBoundingClientRect();
-    const bt3 = document.querySelector(".bt3").getBoundingClientRect();
-    const bl1 = document.querySelector(".bl1").getBoundingClientRect();
-    const bl2 = document.querySelector(".bl2").getBoundingClientRect();
-    zones = {
-      CL:  ((bt1.right + bt2.left)/2 - hR.left) / hR.width,
-      CR:  ((bt2.right + bt3.left)/2 - hR.left) / hR.width,
-      MID: ((bl1.bottom + bl2.top)/2  - hR.top)  / hR.height
-    };
+    var b1 = document.querySelector(".bt1").getBoundingClientRect();
+    var b2 = document.querySelector(".bt2").getBoundingClientRect();
+    var b3 = document.querySelector(".bt3").getBoundingClientRect();
+    var l1 = document.querySelector(".bl1").getBoundingClientRect();
+    var l2 = document.querySelector(".bl2").getBoundingClientRect();
+    zones.CL  = ((b1.right + b2.left)/2 - hR.left) / hR.width;
+    zones.CR  = ((b2.right + b3.left)/2 - hR.left) / hR.width;
+    zones.MID = ((l1.bottom + l2.top)/2  - hR.top)  / hR.height;
+    console.log("Zones:", JSON.stringify(zones));
   }
-  window.addEventListener("load", ()=>{ resizeCanvas(); computeZones(); });
+
+  window.addEventListener("load", function(){ resizeCanvas(); computeZones(); });
 
   /* ── pointer helper ───────────────────── */
   function ptrXY(e){
-    const r = canvas.getBoundingClientRect();
-    const t = e.touches ? e.touches[0] : e;
+    var r = canvas.getBoundingClientRect();
+    var t = e.touches ? e.touches[0] : e;
     return { x: t.clientX - r.left, y: t.clientY - r.top };
   }
 
-  /* ── activate ─────────────────────────── */
-  hearth.addEventListener("pointerdown", ()=>{
-    if(!activated && !fireOn){ activated = true; prompt.classList.add("visible"); }
+  /* ── activate on tap ──────────────────── */
+  hearth.addEventListener("pointerdown", function(){
+    if(!activated && !fireOn){
+      activated = true;
+      promptEl.classList.add("visible");
+    }
   });
 
   /* ── drawing ──────────────────────────── */
   function startDraw(e){
     if(!activated || fireOn) return;
-    e.preventDefault(); drawing = true;
+    e.preventDefault();
+    drawing = true;
     currentStroke = [ptrXY(e)];
     clearTimeout(idleTimer);
   }
   function moveDraw(e){
     if(!drawing) return;
     e.preventDefault();
-    const p = ptrXY(e);
+    var p = ptrXY(e);
     currentStroke.push(p);
     drawEmber(p);
     clearTimeout(idleTimer);
@@ -96,17 +99,17 @@
   canvas.addEventListener("touchmove",  moveDraw,  {passive:false});
   canvas.addEventListener("touchend",   endDraw);
 
-  /* ── ember glow (drawing trail) ──────── */
+  /* ── ember trail ──────────────────────── */
   function drawEmber(p){
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    let g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,14);
+    var g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,14);
     g.addColorStop(0,"rgba(255,100,0,0.9)");
     g.addColorStop(0.4,"rgba(220,40,0,0.5)");
     g.addColorStop(1,"rgba(100,0,0,0)");
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(p.x,p.y,14,0,Math.PI*2); ctx.fill();
-    let g2 = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,5);
+    var g2 = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,5);
     g2.addColorStop(0,"rgba(255,220,180,1)");
     g2.addColorStop(1,"rgba(255,80,0,0)");
     ctx.fillStyle = g2;
@@ -114,10 +117,10 @@
     ctx.restore();
   }
 
-  /* ── fade trail (on failure) ─────────── */
+  /* ── fade trail ───────────────────────── */
   function fadeTrail(cb){
-    let n = 0;
-    const step = ()=>{
+    var n = 0;
+    function step(){
       n++;
       if(n > 30){ ctx.clearRect(0,0,canvas.width,canvas.height); if(cb) cb(); return; }
       ctx.save();
@@ -126,360 +129,334 @@
       ctx.fillRect(0,0,canvas.width,canvas.height);
       ctx.restore();
       requestAnimationFrame(step);
-    };
+    }
     step();
   }
 
-  /* ═══════════════════════════════════════
-     ██  ZONE-BASED "H" RECOGNITION
-     ═══════════════════════════════════════ */
-  const BAND = 0.14;
+  /* ── zone H recognition ───────────────── */
+  var BAND = 0.14;
 
   function zoneDensity(pts,W,H,x0f,x1f,y0f,y1f){
-    const x0=x0f*W,x1=x1f*W,y0=y0f*H,y1=y1f*H;
-    let n=0;
-    for(let i=0;i<pts.length;i++){
-      if(pts[i].x>=x0&&pts[i].x<x1&&pts[i].y>=y0&&pts[i].y<y1) n++;
+    var x0=x0f*W, x1=x1f*W, y0=y0f*H, y1=y1f*H;
+    var n=0;
+    for(var i=0;i<pts.length;i++){
+      if(pts[i].x>=x0 && pts[i].x<x1 && pts[i].y>=y0 && pts[i].y<y1) n++;
     }
-    const a=(x1-x0)*(y1-y0);
-    return a>0?n/a:0;
+    var a=(x1-x0)*(y1-y0);
+    return a>0 ? n/a : 0;
   }
 
   function checkPassword(){
-    const all = strokes.flat();
-    if(all.length<20){ resetScene(); return; }
+    var all = [];
+    for(var s=0;s<strokes.length;s++)
+      for(var p=0;p<strokes[s].length;p++)
+        all.push(strokes[s][p]);
 
-    const W=canvas.width, H=canvas.height;
-    const {CL,CR,MID}=zones;
-    const MT=Math.max(0,MID-BAND), MB=Math.min(1,MID+BAND);
+    if(all.length < 20){ resetScene(); return; }
 
-    let score=0; const log=[];
+    var W=canvas.width, H=canvas.height;
+    var CL=zones.CL, CR=zones.CR, MID=zones.MID;
+    var MT=Math.max(0, MID-BAND), MB=Math.min(1, MID+BAND);
 
-    const LT=zoneDensity(all,W,H,0,CL,0,MT);
-    const CT=zoneDensity(all,W,H,CL,CR,0,MT);
-    const RT=zoneDensity(all,W,H,CR,1,0,MT);
-    const LM=zoneDensity(all,W,H,0,CL,MT,MB);
-    const CM=zoneDensity(all,W,H,CL,CR,MT,MB);
-    const RM=zoneDensity(all,W,H,CR,1,MT,MB);
-    const LB=zoneDensity(all,W,H,0,CL,MB,1);
-    const CB=zoneDensity(all,W,H,CL,CR,MB,1);
-    const RB=zoneDensity(all,W,H,CR,1,MB,1);
+    var score=0;
 
-    const maxD=Math.max(LT,CT,RT,LM,CM,RM,LB,CB,RB);
-    const inkTh=maxD*0.15, empTh=maxD*0.25;
+    var LT=zoneDensity(all,W,H,0,CL,0,MT);
+    var CT=zoneDensity(all,W,H,CL,CR,0,MT);
+    var RT=zoneDensity(all,W,H,CR,1,0,MT);
+    var LM=zoneDensity(all,W,H,0,CL,MT,MB);
+    var CM=zoneDensity(all,W,H,CL,CR,MT,MB);
+    var RM=zoneDensity(all,W,H,CR,1,MT,MB);
+    var LB=zoneDensity(all,W,H,0,CL,MB,1);
+    var CB=zoneDensity(all,W,H,CL,CR,MB,1);
+    var RB=zoneDensity(all,W,H,CR,1,MB,1);
 
-    if(LT>inkTh)score++; log.push(`LT=${LT.toFixed(4)} ${LT>inkTh?"✓":"✗"}`);
-    if(LM>inkTh)score++; log.push(`LM=${LM.toFixed(4)} ${LM>inkTh?"✓":"✗"}`);
-    if(LB>inkTh)score++; log.push(`LB=${LB.toFixed(4)} ${LB>inkTh?"✓":"✗"}`);
-    if(RT>inkTh)score++; log.push(`RT=${RT.toFixed(4)} ${RT>inkTh?"✓":"✗"}`);
-    if(RM>inkTh)score++; log.push(`RM=${RM.toFixed(4)} ${RM>inkTh?"✓":"✗"}`);
-    if(RB>inkTh)score++; log.push(`RB=${RB.toFixed(4)} ${RB>inkTh?"✓":"✗"}`);
-    if(CM>inkTh)score++; log.push(`CM=${CM.toFixed(4)} ${CM>inkTh?"✓":"✗"}`);
-    if(CT<empTh)score++; log.push(`CT_emp=${CT.toFixed(4)} ${CT<empTh?"✓":"✗"}`);
-    if(CB<empTh)score++; log.push(`CB_emp=${CB.toFixed(4)} ${CB<empTh?"✓":"✗"}`);
+    var maxD=Math.max(LT,CT,RT,LM,CM,RM,LB,CB,RB);
+    var inkTh=maxD*0.15, empTh=maxD*0.25;
 
-    const pass = score >= 7;
-    log.push(`SCORE=${score}/9 → ${pass?"✅":"❌"}`);
-    console.log("H:", log.join(" | "));
+    if(LT>inkTh) score++;
+    if(LM>inkTh) score++;
+    if(LB>inkTh) score++;
+    if(RT>inkTh) score++;
+    if(RM>inkTh) score++;
+    if(RB>inkTh) score++;
+    if(CM>inkTh) score++;
+    if(CT<empTh) score++;
+    if(CB<empTh) score++;
 
-    if(pass){ ignite(); }
-    else    { resetScene(); }
+    console.log("H score: " + score + "/9");
+
+    if(score >= 7){ ignite(); }
+    else          { resetScene(); }
   }
 
   function resetScene(){
-    fadeTrail(()=>{
+    fadeTrail(function(){
       strokes = [];
-      prompt.classList.remove("visible");
+      promptEl.classList.remove("visible");
       activated = false;
     });
   }
 
-  /* ═══════════════════════════════════════════════════════════
-     ██  🔥  FIRE  IGNITION
-     ═══════════════════════════════════════════════════════════ */
-
+  /* ═══════════════════════════════════════
+     FIRE IGNITION (with try/catch on each subsystem)
+     ═══════════════════════════════════════ */
   function ignite(){
     fireOn = true;
-    prompt.classList.remove("visible");
+    console.log("IGNITE: starting");
+    promptEl.classList.remove("visible");
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    logs.forEach(l => l.classList.add("burning"));
-    bricks.forEach(b => b.classList.add("warm"));
+    /* CSS effects – always safe */
+    for(var i=0;i<logs.length;i++) logs[i].classList.add("burning");
+    for(var j=0;j<bricks.length;j++) bricks[j].classList.add("warm");
     glow.classList.add("active");
+    console.log("IGNITE: CSS effects applied");
 
-    startFireAnimation();
-    startCrackling();
+    /* fire animation */
+    try{ startFireAnimation(); console.log("IGNITE: fire anim OK"); }
+    catch(e){ console.error("Fire anim error:", e); }
 
-    /* narration starts after fire settles in */
-    setTimeout(startNarration, 2500);
+    /* crackling */
+    try{ startCrackling(); console.log("IGNITE: crackling OK"); }
+    catch(e){ console.error("Crackling error:", e); }
+
+    /* narration after delay */
+    setTimeout(function(){
+      try{ startNarration(); console.log("IGNITE: narration OK"); }
+      catch(e){ console.error("Narration error:", e); }
+    }, 2500);
   }
 
-  /* ── fire particle system ────────────── */
-  let particles = [];
-
+  /* ── fire particles ───────────────────── */
   function Particle(type){
-    const W = canvas.width, H = canvas.height;
+    var W=canvas.width, H=canvas.height;
     this.type = type;
-    this.x  = W * (0.12 + Math.random() * 0.76);
-    this.y  = H * (0.68 + Math.random() * 0.20);
-
-    if(type === "flame"){
-      this.size    = 6 + Math.random() * 18;
-      this.vx      = (Math.random() - 0.5) * 0.8;
-      this.vy      = -(1.0 + Math.random() * 2.5);
-      this.maxLife  = 50 + Math.random() * 40;
+    this.x = W*(0.12+Math.random()*0.76);
+    this.y = H*(0.68+Math.random()*0.20);
+    if(type==="flame"){
+      this.size=6+Math.random()*18;
+      this.vx=(Math.random()-0.5)*0.8;
+      this.vy=-(1.0+Math.random()*2.5);
+      this.maxLife=50+Math.random()*40;
     } else {
-      this.size    = 1.5 + Math.random() * 3;
-      this.vx      = (Math.random() - 0.5) * 1.2;
-      this.vy      = -(0.8 + Math.random() * 2.0);
-      this.maxLife  = 70 + Math.random() * 60;
+      this.size=1.5+Math.random()*3;
+      this.vx=(Math.random()-0.5)*1.2;
+      this.vy=-(0.8+Math.random()*2.0);
+      this.maxLife=70+Math.random()*60;
     }
-    this.life = 0;
+    this.life=0;
   }
 
-  function updateParticle(p){
+  function updateP(p){
     p.life++;
-    p.x += p.vx + (Math.random() - 0.5) * 0.6;
+    p.x += p.vx + (Math.random()-0.5)*0.6;
     p.y += p.vy;
     p.vy *= 0.995;
-    if(p.type === "flame") p.size *= 0.985;
+    if(p.type==="flame") p.size*=0.985;
     return p.life < p.maxLife && p.size > 0.5;
   }
 
-  function drawParticle(p){
-    const t = p.life / p.maxLife;
-    let r,g,b,a;
-
-    if(p.type === "flame"){
-      if(t < 0.15){
-        r=255; g=240; b=200; a=0.9;
-      } else if(t < 0.4){
-        r=255; g=200; b=50;  a=0.8 - t*0.5;
-      } else if(t < 0.7){
-        r=255; g=120; b=20;  a=0.6 - t*0.4;
-      } else {
-        r=200; g=40;  b=10;  a=Math.max(0, 0.4 - t*0.4);
-      }
-
+  function drawP(p){
+    var t=p.life/p.maxLife;
+    var r,g,b,a;
+    if(p.type==="flame"){
+      if(t<0.15){r=255;g=240;b=200;a=0.9;}
+      else if(t<0.4){r=255;g=200;b=50;a=0.8-t*0.5;}
+      else if(t<0.7){r=255;g=120;b=20;a=0.6-t*0.4;}
+      else{r=200;g=40;b=10;a=Math.max(0,0.4-t*0.4);}
       ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      const sz = p.size;
-      const grad = ctx.createRadialGradient(p.x,p.y,0, p.x,p.y,sz);
-      grad.addColorStop(0,   `rgba(${r},${g},${b},${a})`);
-      grad.addColorStop(0.4, `rgba(${r},${Math.max(0,g-40)},${Math.max(0,b-10)},${a*0.6})`);
-      grad.addColorStop(1,   `rgba(${Math.max(0,r-60)},0,0,0)`);
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(p.x,p.y,sz,0,Math.PI*2); ctx.fill();
+      ctx.globalCompositeOperation="lighter";
+      var gr=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size);
+      gr.addColorStop(0,"rgba("+r+","+g+","+b+","+a+")");
+      gr.addColorStop(0.4,"rgba("+r+","+Math.max(0,g-40)+","+Math.max(0,b-10)+","+(a*0.6)+")");
+      gr.addColorStop(1,"rgba("+Math.max(0,r-60)+",0,0,0)");
+      ctx.fillStyle=gr;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();
       ctx.restore();
-
     } else {
-      a = Math.max(0, 1 - t);
+      a=Math.max(0,1-t);
       ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      const grad = ctx.createRadialGradient(p.x,p.y,0, p.x,p.y,p.size);
-      grad.addColorStop(0, `rgba(255,220,150,${a})`);
-      grad.addColorStop(0.5, `rgba(255,140,40,${a*0.6})`);
-      grad.addColorStop(1, `rgba(200,60,0,0)`);
-      ctx.fillStyle = grad;
-      ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+      ctx.globalCompositeOperation="lighter";
+      var gr2=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size);
+      gr2.addColorStop(0,"rgba(255,220,150,"+a+")");
+      gr2.addColorStop(0.5,"rgba(255,140,40,"+(a*0.6)+")");
+      gr2.addColorStop(1,"rgba(200,60,0,0)");
+      ctx.fillStyle=gr2;
+      ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();
       ctx.restore();
     }
   }
 
   function startFireAnimation(){
-    const W = canvas.width, H = canvas.height;
-
+    var W=canvas.width, H=canvas.height;
     function loop(){
       ctx.save();
-      ctx.globalCompositeOperation = "source-over";
-      ctx.fillStyle = "rgba(3,2,1,0.18)";
+      ctx.globalCompositeOperation="source-over";
+      ctx.fillStyle="rgba(3,2,1,0.18)";
       ctx.fillRect(0,0,W,H);
       ctx.restore();
 
-      for(let i = 0; i < 4; i++) particles.push(new Particle("flame"));
-      if(Math.random() < 0.3) particles.push(new Particle("ember"));
+      for(var i=0;i<4;i++) particles.push(new Particle("flame"));
+      if(Math.random()<0.3) particles.push(new Particle("ember"));
 
-      particles = particles.filter(p =>{
-        const alive = updateParticle(p);
-        if(alive) drawParticle(p);
-        return alive;
-      });
-
+      var alive=[];
+      for(var j=0;j<particles.length;j++){
+        if(updateP(particles[j])){
+          drawP(particles[j]);
+          alive.push(particles[j]);
+        }
+      }
+      particles=alive;
       requestAnimationFrame(loop);
     }
     loop();
   }
 
-  /* ═══════════════════════════════════════════════════════════
-     ██  🔊  CRACKLING SOUND  (Web Audio API)
-     ═══════════════════════════════════════════════════════════ */
-
+  /* ── crackling sound ──────────────────── */
   function startCrackling(){
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if(!AC) return;
-    const a = new AC();
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if(!AC){ console.warn("No AudioContext"); return; }
+    var a;
+    try{ a = new AC(); } catch(e){ console.warn("AudioContext failed:", e); return; }
 
-    const len = 2 * a.sampleRate;
-    const buf = a.createBuffer(1, len, a.sampleRate);
-    const d   = buf.getChannelData(0);
-    let last  = 0;
-    for(let i = 0; i < len; i++){
-      const w = Math.random() * 2 - 1;
-      d[i] = (last + 0.02 * w) / 1.02;
+    var len = 2*a.sampleRate;
+
+    /* brown noise rumble */
+    var buf = a.createBuffer(1,len,a.sampleRate);
+    var d = buf.getChannelData(0);
+    var last = 0;
+    for(var i=0;i<len;i++){
+      var w = Math.random()*2-1;
+      d[i] = (last + 0.02*w)/1.02;
       last = d[i];
       d[i] *= 3.5;
     }
-    const src = a.createBufferSource();
+    var src = a.createBufferSource();
     src.buffer = buf; src.loop = true;
-
-    const lp = a.createBiquadFilter();
-    lp.type = "lowpass"; lp.frequency.value = 180;
-    const rumbleGain = a.createGain();
-    rumbleGain.gain.value = 0.25;
-
-    src.connect(lp); lp.connect(rumbleGain);
-    rumbleGain.connect(a.destination);
+    var lp = a.createBiquadFilter();
+    lp.type="lowpass"; lp.frequency.value=180;
+    var rGain = a.createGain(); rGain.gain.value=0.25;
+    src.connect(lp); lp.connect(rGain); rGain.connect(a.destination);
     src.start();
 
-    const hissBuf = a.createBuffer(1, len, a.sampleRate);
-    const hd = hissBuf.getChannelData(0);
-    for(let i = 0; i < len; i++) hd[i] = Math.random() * 2 - 1;
-    const hissSrc = a.createBufferSource();
-    hissSrc.buffer = hissBuf; hissSrc.loop = true;
+    /* hiss */
+    var hBuf = a.createBuffer(1,len,a.sampleRate);
+    var hd = hBuf.getChannelData(0);
+    for(var k=0;k<len;k++) hd[k]=Math.random()*2-1;
+    var hSrc = a.createBufferSource();
+    hSrc.buffer=hBuf; hSrc.loop=true;
+    var bp = a.createBiquadFilter();
+    bp.type="bandpass"; bp.frequency.value=3000; bp.Q.value=2;
+    var hGain = a.createGain(); hGain.gain.value=0.06;
+    hSrc.connect(bp); bp.connect(hGain); hGain.connect(a.destination);
+    hSrc.start();
 
-    const bp = a.createBiquadFilter();
-    bp.type = "bandpass"; bp.frequency.value = 3000; bp.Q.value = 2;
-    const hissGain = a.createGain();
-    hissGain.gain.value = 0.06;
-
-    hissSrc.connect(bp); bp.connect(hissGain);
-    hissGain.connect(a.destination);
-    hissSrc.start();
-
+    /* pops */
     function pop(){
-      const now = a.currentTime;
-      const pLen = Math.floor(a.sampleRate * (0.01 + Math.random() * 0.04));
-      const pBuf = a.createBuffer(1, pLen, a.sampleRate);
-      const pd   = pBuf.getChannelData(0);
-      for(let i = 0; i < pLen; i++) pd[i] = Math.random() * 2 - 1;
-      const pSrc = a.createBufferSource();
-      pSrc.buffer = pBuf;
-
-      const pBP = a.createBiquadFilter();
-      pBP.type = "bandpass";
-      pBP.frequency.value = 600 + Math.random() * 3000;
-      pBP.Q.value = 3 + Math.random() * 12;
-
-      const pGain = a.createGain();
-      pGain.gain.setValueAtTime(0.12 + Math.random() * 0.22, now);
-      pGain.gain.exponentialRampToValueAtTime(0.001, now + 0.02 + Math.random() * 0.06);
-
-      pSrc.connect(pBP); pBP.connect(pGain);
-      pGain.connect(a.destination);
-      pSrc.start(now); pSrc.stop(now + 0.1);
-
-      setTimeout(pop, 80 + Math.random() * 500);
+      try{
+        var now=a.currentTime;
+        var pL=Math.floor(a.sampleRate*(0.01+Math.random()*0.04));
+        var pB=a.createBuffer(1,pL,a.sampleRate);
+        var pd=pB.getChannelData(0);
+        for(var i=0;i<pL;i++) pd[i]=Math.random()*2-1;
+        var pS=a.createBufferSource(); pS.buffer=pB;
+        var pBP=a.createBiquadFilter();
+        pBP.type="bandpass"; pBP.frequency.value=600+Math.random()*3000; pBP.Q.value=3+Math.random()*12;
+        var pG=a.createGain();
+        pG.gain.setValueAtTime(0.12+Math.random()*0.22,now);
+        pG.gain.exponentialRampToValueAtTime(0.001,now+0.02+Math.random()*0.06);
+        pS.connect(pBP); pBP.connect(pG); pG.connect(a.destination);
+        pS.start(now); pS.stop(now+0.1);
+      }catch(e){}
+      if(fireOn) setTimeout(pop, 80+Math.random()*500);
     }
     setTimeout(pop, 400);
 
+    /* cracks */
     function crack(){
-      const now = a.currentTime;
-      const cLen = Math.floor(a.sampleRate * 0.06);
-      const cBuf = a.createBuffer(1, cLen, a.sampleRate);
-      const cd   = cBuf.getChannelData(0);
-      let v = 0.5 + Math.random() * 0.5;
-      for(let i = 0; i < cLen; i++){
-        cd[i] = (Math.random() * 2 - 1) * v;
-        v *= 0.997;
-      }
-      const cSrc = a.createBufferSource();
-      cSrc.buffer = cBuf;
-
-      const cGain = a.createGain();
-      cGain.gain.setValueAtTime(0.3 + Math.random() * 0.15, now);
-      cGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-
-      cSrc.connect(cGain); cGain.connect(a.destination);
-      cSrc.start(now); cSrc.stop(now + 0.1);
-
-      setTimeout(crack, 1500 + Math.random() * 4000);
+      try{
+        var now=a.currentTime;
+        var cL=Math.floor(a.sampleRate*0.06);
+        var cB=a.createBuffer(1,cL,a.sampleRate);
+        var cd=cB.getChannelData(0);
+        var v=0.5+Math.random()*0.5;
+        for(var i=0;i<cL;i++){ cd[i]=(Math.random()*2-1)*v; v*=0.997; }
+        var cS=a.createBufferSource(); cS.buffer=cB;
+        var cG=a.createGain();
+        cG.gain.setValueAtTime(0.3+Math.random()*0.15,now);
+        cG.gain.exponentialRampToValueAtTime(0.001,now+0.08);
+        cS.connect(cG); cG.connect(a.destination);
+        cS.start(now); cS.stop(now+0.1);
+      }catch(e){}
+      if(fireOn) setTimeout(crack, 1500+Math.random()*4000);
     }
     setTimeout(crack, 1000);
   }
 
-  /* ═══════════════════════════════════════════════════════════
-     ██  🎙️  NARRATION  (Web Speech API)
-     ═══════════════════════════════════════════════════════════
-     Old storyteller: slow rate, deep pitch, Italian voice.
-     Loops with a 4-second pause between readings.
-     Chrome workaround: periodic pause/resume prevents cutoff.
-  */
+  /* ── narration ────────────────────────── */
+  var italianVoice = null;
+  var resumeTimer  = null;
 
-  let italianVoice = null;
-  let resumeTimer  = null;
-
-  /* pre-load Italian voice */
-  function findItalianVoice(){
-    const voices = speechSynthesis.getVoices();
-    if(!voices.length) return;
-    italianVoice =
-      voices.find(v => v.lang === "it-IT") ||
-      voices.find(v => v.lang.startsWith("it")) ||
-      voices.find(v => /italian/i.test(v.name)) ||
-      null;
-    if(italianVoice) console.log("Narrator voice:", italianVoice.name, italianVoice.lang);
+  function findVoice(){
+    if(typeof speechSynthesis === "undefined") return;
+    try{
+      var v = speechSynthesis.getVoices();
+      if(!v || !v.length) return;
+      for(var i=0;i<v.length;i++){
+        if(v[i].lang === "it-IT"){ italianVoice=v[i]; break; }
+      }
+      if(!italianVoice){
+        for(var j=0;j<v.length;j++){
+          if(v[j].lang && v[j].lang.indexOf("it")===0){ italianVoice=v[j]; break; }
+        }
+      }
+      if(italianVoice) console.log("Voice found:", italianVoice.name);
+    }catch(e){}
   }
 
   if(typeof speechSynthesis !== "undefined"){
-    findItalianVoice();
-    speechSynthesis.addEventListener("voiceschanged", findItalianVoice);
+    findVoice();
+    try{ speechSynthesis.addEventListener("voiceschanged", findVoice); }catch(e){}
   }
 
-  /* Chrome fix: long utterances cut off after ~15s */
   function keepAlive(){
-    if(speechSynthesis.speaking && !speechSynthesis.paused){
-      speechSynthesis.pause();
-      speechSynthesis.resume();
-    }
+    try{
+      if(speechSynthesis.speaking && !speechSynthesis.paused){
+        speechSynthesis.pause();
+        speechSynthesis.resume();
+      }
+    }catch(e){}
     resumeTimer = setTimeout(keepAlive, 8000);
   }
 
-  function stopKeepAlive(){
-    clearTimeout(resumeTimer);
-  }
-
   function startNarration(){
-    if(typeof speechSynthesis === "undefined") return;
+    if(typeof speechSynthesis === "undefined"){ console.warn("No speechSynthesis"); return; }
 
-    speechSynthesis.cancel();
+    try{ speechSynthesis.cancel(); }catch(e){}
 
     function speak(){
-      const utter = new SpeechSynthesisUtterance(STORY);
-      utter.lang   = "it-IT";
-      utter.rate   = 0.78;     /* slow old-man pace    */
-      utter.pitch  = 0.7;      /* deep, warm voice     */
-      utter.volume = 0.85;
+      if(!fireOn) return;
+      try{
+        var utter = new SpeechSynthesisUtterance(STORY);
+        utter.lang   = "it-IT";
+        utter.rate   = 0.78;
+        utter.pitch  = 0.7;
+        utter.volume = 0.85;
+        if(italianVoice) utter.voice = italianVoice;
 
-      if(italianVoice) utter.voice = italianVoice;
+        utter.onend = function(){
+          clearTimeout(resumeTimer);
+          setTimeout(function(){ if(fireOn) speak(); }, 4000);
+        };
+        utter.onerror = function(){
+          clearTimeout(resumeTimer);
+          setTimeout(function(){ if(fireOn) speak(); }, 2000);
+        };
 
-      utter.onend = function(){
-        stopKeepAlive();
-        /* 4s pause between readings, like catching breath */
-        setTimeout(()=>{
-          if(fireOn) speak();
-        }, 4000);
-      };
-
-      utter.onerror = function(e){
-        console.warn("Speech error:", e.error);
-        stopKeepAlive();
-        setTimeout(()=>{ if(fireOn) speak(); }, 2000);
-      };
-
-      speechSynthesis.speak(utter);
-
-      stopKeepAlive();
-      keepAlive();
+        speechSynthesis.speak(utter);
+        clearTimeout(resumeTimer);
+        keepAlive();
+      }catch(e){ console.error("Speak error:", e); }
     }
 
     speak();
