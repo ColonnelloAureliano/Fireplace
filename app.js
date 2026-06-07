@@ -1,7 +1,6 @@
 (function(){
   "use strict";
 
-  /* == DOM == */
   var hearth   = document.getElementById("hearth");
   var canvas   = document.getElementById("drawCanvas");
   var ctx      = canvas.getContext("2d");
@@ -10,7 +9,6 @@
   var logs     = document.querySelectorAll(".log");
   var bricks   = document.querySelectorAll(".brick");
 
-  /* == state == */
   var activated     = false;
   var drawing       = false;
   var fireOn        = false;
@@ -21,11 +19,10 @@
   var particles     = [];
   var globalAudioCtx = null;
   var audioPrimed    = false;
+  var speechStarted  = false;
 
-  /* == story text == */
   var STORY = "L\u2019Isola Viscontea, situata a Lecco dove il Lago di Como torna a essere il fiume Adda, \u00e8 un piccolo gioiello di origine artificiale: nacque nel quindicesimo secolo come accumulo di detriti e materiali di scavo durante i lavori di costruzione e ampliamento del vicino Ponte Azzone Visconti. Sulla sua funzione originaria ci sono pareri discordanti: alcuni storici pensano fosse un piccolo avamposto di controllo per la navigazione e i dazi sul fiume, altri una semplice casa di pescatori.";
 
-  /* == canvas size == */
   function resizeCanvas(){
     if(fireOn) return;
     canvas.width  = hearth.clientWidth;
@@ -34,7 +31,6 @@
   }
   window.addEventListener("resize", resizeCanvas);
 
-  /* == zones from bricks == */
   var zones = { CL:0.25, CR:0.75, MID:0.50 };
 
   function computeZones(){
@@ -53,15 +49,13 @@
 
   window.addEventListener("load", function(){ resizeCanvas(); computeZones(); });
 
-  /* ================================================================
-     AGGRESSIVE AUDIO + SPEECH PRIMING
-     ================================================================ */
-  function primeAllAudio(){
+  /* === AUDIO CONTEXT PRIMING (separate from speech!) === */
+  function primeAudioCtx(){
     if(!globalAudioCtx){
       try{
         var AC = window.AudioContext || window.webkitAudioContext;
         if(AC){ globalAudioCtx = new AC(); }
-      }catch(e){ console.warn("AC create fail:", e); }
+      }catch(e){}
     }
     if(globalAudioCtx && globalAudioCtx.state === "suspended"){
       try{ globalAudioCtx.resume(); }catch(e){}
@@ -74,38 +68,22 @@
         ss.connect(globalAudioCtx.destination);
         ss.start();
         audioPrimed = true;
-        console.log("AudioContext FULLY unlocked, state:", globalAudioCtx.state);
-      }catch(e){ console.warn("AC silent play fail:", e); }
-    }
-    if(typeof speechSynthesis !== "undefined"){
-      try{
-        speechSynthesis.cancel();
-        var u = new SpeechSynthesisUtterance(" ");
-        u.volume = 0.01;
-        u.rate   = 10;
-        u.lang   = "it-IT";
-        speechSynthesis.speak(u);
-        console.log("SpeechSynthesis primed");
-      }catch(e){ console.warn("Speech prime fail:", e); }
+        console.log("AudioContext unlocked");
+      }catch(e){}
     }
   }
 
-  /* prime on multiple gesture types for max compat */
-  document.addEventListener("touchend", primeAllAudio, {once: true});
-  document.addEventListener("click",    primeAllAudio, {once: true});
+  document.addEventListener("touchend", primeAudioCtx, {once: true});
+  document.addEventListener("click",    primeAudioCtx, {once: true});
+  hearth.addEventListener("touchend", function(){ primeAudioCtx(); }, false);
+  hearth.addEventListener("click",    function(){ primeAudioCtx(); }, false);
 
-  /* also prime on every hearth interaction */
-  hearth.addEventListener("touchend", function(){ primeAllAudio(); }, false);
-  hearth.addEventListener("click",    function(){ primeAllAudio(); }, false);
-
-  /* == pointer helper == */
   function ptrXY(e){
     var r = canvas.getBoundingClientRect();
     var t = e.touches ? e.touches[0] : e;
     return { x: t.clientX - r.left, y: t.clientY - r.top };
   }
 
-  /* == activate on first tap == */
   hearth.addEventListener("pointerdown", function(){
     if(!activated && !fireOn){
       activated = true;
@@ -113,7 +91,6 @@
     }
   });
 
-  /* == drawing == */
   function startDraw(e){
     if(!activated || fireOn) return;
     e.preventDefault();
@@ -146,7 +123,6 @@
   canvas.addEventListener("touchmove",  moveDraw,  {passive:false});
   canvas.addEventListener("touchend",   endDraw);
 
-  /* == ember trail == */
   function drawEmber(p){
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
@@ -164,7 +140,6 @@
     ctx.restore();
   }
 
-  /* == fade trail == */
   function fadeTrail(cb){
     var n = 0;
     function step(){
@@ -180,7 +155,6 @@
     step();
   }
 
-  /* == zone H recognition == */
   var BAND = 0.14;
 
   function zoneDensity(pts, W, H, x0f, x1f, y0f, y1f){
@@ -205,7 +179,6 @@
     var W = canvas.width, H = canvas.height;
     var CL = zones.CL, CR = zones.CR, MID = zones.MID;
     var MT = Math.max(0, MID - BAND), MB = Math.min(1, MID + BAND);
-
     var score = 0;
 
     var LT = zoneDensity(all, W, H, 0, CL, 0, MT);
@@ -232,7 +205,6 @@
     if(CB < empTh) score++;
 
     console.log("H score: " + score + "/9");
-
     if(score >= 7){ ignite(); }
     else          { resetScene(); }
   }
@@ -245,12 +217,10 @@
     });
   }
 
-  /* ================================================================
-     FIRE IGNITION
-     ================================================================ */
+  /* === IGNITE === */
   function ignite(){
     fireOn = true;
-    console.log("IGNITE: starting");
+    console.log("IGNITE");
     promptEl.classList.remove("visible");
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -261,23 +231,16 @@
     for(var i = 0; i < logs.length; i++) logs[i].classList.add("burning");
     for(var j = 0; j < bricks.length; j++) bricks[j].classList.add("warm");
     glow.classList.add("active");
-    console.log("IGNITE: CSS applied (" + logs.length + " logs)");
 
-    try{ startFireAnimation(); console.log("IGNITE: fire OK"); }
-    catch(e){ console.error("Fire error:", e); }
-
-    try{ startCrackling(); console.log("IGNITE: crackling OK"); }
-    catch(e){ console.error("Crackling error:", e); }
+    try{ startFireAnimation(); }catch(e){ console.error("Fire err:", e); }
+    try{ startCrackling(); }catch(e){ console.error("Crack err:", e); }
 
     setTimeout(function(){
-      try{ startNarration(); console.log("IGNITE: narration launched"); }
-      catch(e){ console.error("Narration error:", e); }
+      try{ tryAutoNarration(); }catch(e){ console.error("Narr err:", e); }
     }, 2500);
   }
 
-  /* ================================================================
-     FIRE PARTICLES (clearRect = transparent = logs visible)
-     ================================================================ */
+  /* === FIRE PARTICLES === */
   function Particle(type){
     var W = canvas.width, H = canvas.height;
     this.type = type;
@@ -341,16 +304,11 @@
     var W = canvas.width, H = canvas.height;
     function loop(){
       ctx.clearRect(0, 0, W, H);
-
       for(var i = 0; i < 4; i++) particles.push(new Particle("flame"));
       if(Math.random() < 0.3) particles.push(new Particle("ember"));
-
       var alive = [];
       for(var j = 0; j < particles.length; j++){
-        if(updateP(particles[j])){
-          drawP(particles[j]);
-          alive.push(particles[j]);
-        }
+        if(updateP(particles[j])){ drawP(particles[j]); alive.push(particles[j]); }
       }
       particles = alive;
       requestAnimationFrame(loop);
@@ -358,66 +316,38 @@
     loop();
   }
 
-  /* ================================================================
-     CRACKLING SOUND
-     ================================================================ */
+  /* === CRACKLING === */
   function startCrackling(){
     var a = globalAudioCtx;
     if(!a){
       var AC = window.AudioContext || window.webkitAudioContext;
-      if(!AC){ console.warn("No AudioContext available"); return; }
-      try{ a = new AC(); globalAudioCtx = a; }catch(e){ console.warn("AC fail:", e); return; }
+      if(!AC) return;
+      try{ a = new AC(); globalAudioCtx = a; }catch(e){ return; }
     }
-    if(a.state === "suspended"){
-      try{ a.resume(); }catch(e){}
-    }
-
-    console.log("Crackling: AC state=" + a.state + " sampleRate=" + a.sampleRate);
+    if(a.state === "suspended") try{ a.resume(); }catch(e){}
 
     var len = 2 * a.sampleRate;
-
-    /* brown noise rumble */
     var buf = a.createBuffer(1, len, a.sampleRate);
     var d = buf.getChannelData(0);
     var last = 0;
     for(var i = 0; i < len; i++){
       var w = Math.random() * 2 - 1;
       d[i] = (last + 0.02 * w) / 1.02;
-      last = d[i];
-      d[i] *= 3.5;
+      last = d[i]; d[i] *= 3.5;
     }
-    var src = a.createBufferSource();
-    src.buffer = buf;
-    src.loop = true;
-    var lp = a.createBiquadFilter();
-    lp.type = "lowpass";
-    lp.frequency.value = 180;
-    var rGain = a.createGain();
-    rGain.gain.value = 0.25;
-    src.connect(lp);
-    lp.connect(rGain);
-    rGain.connect(a.destination);
-    src.start();
+    var src = a.createBufferSource(); src.buffer = buf; src.loop = true;
+    var lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 180;
+    var rG = a.createGain(); rG.gain.value = 0.25;
+    src.connect(lp); lp.connect(rG); rG.connect(a.destination); src.start();
 
-    /* hiss */
-    var hBuf = a.createBuffer(1, len, a.sampleRate);
-    var hd = hBuf.getChannelData(0);
+    var hB = a.createBuffer(1, len, a.sampleRate);
+    var hd = hB.getChannelData(0);
     for(var k = 0; k < len; k++) hd[k] = Math.random() * 2 - 1;
-    var hSrc = a.createBufferSource();
-    hSrc.buffer = hBuf;
-    hSrc.loop = true;
-    var bp = a.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 3000;
-    bp.Q.value = 2;
-    var hGain = a.createGain();
-    hGain.gain.value = 0.06;
-    hSrc.connect(bp);
-    bp.connect(hGain);
-    hGain.connect(a.destination);
-    hSrc.start();
+    var hS = a.createBufferSource(); hS.buffer = hB; hS.loop = true;
+    var bp = a.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 3000; bp.Q.value = 2;
+    var hG = a.createGain(); hG.gain.value = 0.06;
+    hS.connect(bp); bp.connect(hG); hG.connect(a.destination); hS.start();
 
-    /* pops */
     function pop(){
       try{
         var now = a.currentTime;
@@ -425,26 +355,19 @@
         var pB = a.createBuffer(1, pL, a.sampleRate);
         var pd = pB.getChannelData(0);
         for(var pi = 0; pi < pL; pi++) pd[pi] = Math.random() * 2 - 1;
-        var pS = a.createBufferSource();
-        pS.buffer = pB;
-        var pBP = a.createBiquadFilter();
-        pBP.type = "bandpass";
-        pBP.frequency.value = 600 + Math.random() * 3000;
-        pBP.Q.value = 3 + Math.random() * 12;
+        var pS = a.createBufferSource(); pS.buffer = pB;
+        var pBP = a.createBiquadFilter(); pBP.type = "bandpass";
+        pBP.frequency.value = 600 + Math.random() * 3000; pBP.Q.value = 3 + Math.random() * 12;
         var pG = a.createGain();
         pG.gain.setValueAtTime(0.12 + Math.random() * 0.22, now);
         pG.gain.exponentialRampToValueAtTime(0.001, now + 0.02 + Math.random() * 0.06);
-        pS.connect(pBP);
-        pBP.connect(pG);
-        pG.connect(a.destination);
-        pS.start(now);
-        pS.stop(now + 0.1);
+        pS.connect(pBP); pBP.connect(pG); pG.connect(a.destination);
+        pS.start(now); pS.stop(now + 0.1);
       }catch(e){}
       if(fireOn) setTimeout(pop, 80 + Math.random() * 500);
     }
     setTimeout(pop, 400);
 
-    /* cracks */
     function crack(){
       try{
         var now = a.currentTime;
@@ -453,24 +376,18 @@
         var cd = cB.getChannelData(0);
         var v = 0.5 + Math.random() * 0.5;
         for(var ci = 0; ci < cL; ci++){ cd[ci] = (Math.random() * 2 - 1) * v; v *= 0.997; }
-        var cS = a.createBufferSource();
-        cS.buffer = cB;
+        var cS = a.createBufferSource(); cS.buffer = cB;
         var cG = a.createGain();
         cG.gain.setValueAtTime(0.3 + Math.random() * 0.15, now);
         cG.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-        cS.connect(cG);
-        cG.connect(a.destination);
-        cS.start(now);
-        cS.stop(now + 0.1);
+        cS.connect(cG); cG.connect(a.destination); cS.start(now); cS.stop(now + 0.1);
       }catch(e){}
       if(fireOn) setTimeout(crack, 1500 + Math.random() * 4000);
     }
     setTimeout(crack, 1000);
   }
 
-  /* ================================================================
-     NARRATION with fallback 🔊 button
-     ================================================================ */
+  /* === NARRATION === */
   var italianVoice = null;
   var resumeTimer  = null;
 
@@ -487,7 +404,7 @@
           if(v[j].lang && v[j].lang.indexOf("it") === 0){ italianVoice = v[j]; break; }
         }
       }
-      if(italianVoice) console.log("Voice:", italianVoice.name, italianVoice.lang);
+      if(italianVoice) console.log("Voice:", italianVoice.name);
     }catch(e){}
   }
 
@@ -506,75 +423,75 @@
     resumeTimer = setTimeout(keepAlive, 8000);
   }
 
-  function doSpeak(){
+  function speakStory(){
     if(!fireOn) return;
+    if(typeof speechSynthesis === "undefined") return;
     if(!italianVoice) findVoice();
     try{
-      speechSynthesis.cancel();
       var utter = new SpeechSynthesisUtterance(STORY);
-      utter.lang   = "it-IT";
-      utter.rate   = 0.78;
-      utter.pitch  = 0.7;
-      utter.volume = 0.85;
+      utter.lang = "it-IT"; utter.rate = 0.78; utter.pitch = 0.7; utter.volume = 0.85;
       if(italianVoice) utter.voice = italianVoice;
-
       utter.onend = function(){
         clearTimeout(resumeTimer);
-        console.log("Narration ended, loop in 4s");
-        setTimeout(function(){ if(fireOn) doSpeak(); }, 4000);
+        setTimeout(function(){ if(fireOn){ try{ speakStory(); keepAlive(); }catch(e){} } }, 4000);
       };
-      utter.onerror = function(ev){
-        clearTimeout(resumeTimer);
-        console.warn("Speech error:", ev.error);
-        setTimeout(function(){ if(fireOn) doSpeak(); }, 2000);
-      };
-
+      utter.onerror = function(){ clearTimeout(resumeTimer); speechStarted = false; showListenButton(); };
       speechSynthesis.speak(utter);
-      console.log("Speaking now...");
+      speechStarted = true;
       clearTimeout(resumeTimer);
       keepAlive();
-    }catch(e){ console.error("Speak error:", e); }
+    }catch(e){}
   }
 
-  /* fallback button if auto-narration fails */
   function showListenButton(){
+    if(speechStarted) return;
     var old = document.getElementById("listenBtn");
     if(old) old.remove();
-
     var btn = document.createElement("div");
     btn.id = "listenBtn";
     btn.innerHTML = "&#x1F50A;";
-    btn.style.cssText = "position:absolute;bottom:50%;left:50%;transform:translate(-50%,50%);z-index:10;font-size:48px;cursor:pointer;opacity:0.8;filter:drop-shadow(0 0 10px rgba(255,150,50,0.7));transition:opacity 0.3s;";
+    btn.style.cssText = "position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);z-index:10;font-size:48px;cursor:pointer;opacity:0.85;filter:drop-shadow(0 0 12px rgba(255,150,50,0.8));transition:opacity 0.3s;animation:glowPulse 2s ease-in-out infinite alternate;";
     hearth.appendChild(btn);
-    console.log("Listen button shown");
 
-    function onTap(e){
+    function handleTap(e){
       e.preventDefault();
       e.stopPropagation();
       btn.style.opacity = "0";
-      setTimeout(function(){ btn.remove(); }, 300);
-      primeAllAudio();
-      setTimeout(function(){ doSpeak(); }, 150);
+      btn.style.pointerEvents = "none";
+      setTimeout(function(){ try{ btn.remove(); }catch(ex){} }, 300);
+
+      if(typeof speechSynthesis !== "undefined"){
+        try{
+          if(!italianVoice) findVoice();
+          var utter = new SpeechSynthesisUtterance(STORY);
+          utter.lang = "it-IT"; utter.rate = 0.78; utter.pitch = 0.7; utter.volume = 0.85;
+          if(italianVoice) utter.voice = italianVoice;
+          utter.onend = function(){
+            clearTimeout(resumeTimer);
+            setTimeout(function(){ if(fireOn){ try{ speakStory(); keepAlive(); }catch(ex){} } }, 4000);
+          };
+          utter.onerror = function(){ clearTimeout(resumeTimer); speechStarted = false; showListenButton(); };
+          speechSynthesis.speak(utter);
+          speechStarted = true;
+          clearTimeout(resumeTimer);
+          keepAlive();
+        }catch(ex){}
+      }
     }
-    btn.addEventListener("touchend", onTap, false);
-    btn.addEventListener("click", onTap, false);
+
+    btn.addEventListener("touchend", handleTap, false);
+    btn.addEventListener("click", handleTap, false);
   }
 
-  function startNarration(){
-    if(typeof speechSynthesis === "undefined"){
-      console.warn("No speechSynthesis");
-      return;
-    }
-
-    doSpeak();
-
-    /* check after 2s if speech actually started; if not show button */
+  function tryAutoNarration(){
+    if(typeof speechSynthesis === "undefined") return;
+    speakStory();
     setTimeout(function(){
-      if(typeof speechSynthesis !== "undefined" && !speechSynthesis.speaking){
-        console.warn("Speech did not start, showing fallback button");
+      if(!speechStarted || !speechSynthesis.speaking){
+        speechStarted = false;
         showListenButton();
       }
-    }, 2000);
+    }, 1500);
   }
 
 })();
