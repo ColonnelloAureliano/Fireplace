@@ -1,7 +1,7 @@
 (function(){
   "use strict";
 
-  /* ── DOM ──────────────────────────────── */
+  /* == DOM == */
   var hearth   = document.getElementById("hearth");
   var canvas   = document.getElementById("drawCanvas");
   var ctx      = canvas.getContext("2d");
@@ -10,7 +10,7 @@
   var logs     = document.querySelectorAll(".log");
   var bricks   = document.querySelectorAll(".brick");
 
-  /* ── state ────────────────────────────── */
+  /* == state == */
   var activated     = false;
   var drawing       = false;
   var fireOn        = false;
@@ -20,11 +20,12 @@
   var IDLE_MS       = 1200;
   var particles     = [];
   var globalAudioCtx = null;
+  var audioPrimed    = false;
 
-  /* ── narration text ───────────────────── */
+  /* == story text == */
   var STORY = "L\u2019Isola Viscontea, situata a Lecco dove il Lago di Como torna a essere il fiume Adda, \u00e8 un piccolo gioiello di origine artificiale: nacque nel quindicesimo secolo come accumulo di detriti e materiali di scavo durante i lavori di costruzione e ampliamento del vicino Ponte Azzone Visconti. Sulla sua funzione originaria ci sono pareri discordanti: alcuni storici pensano fosse un piccolo avamposto di controllo per la navigazione e i dazi sul fiume, altri una semplice casa di pescatori.";
 
-  /* ── canvas size ──────────────────────── */
+  /* == canvas size == */
   function resizeCanvas(){
     if(fireOn) return;
     canvas.width  = hearth.clientWidth;
@@ -33,7 +34,7 @@
   }
   window.addEventListener("resize", resizeCanvas);
 
-  /* ── zones from brick positions ──────── */
+  /* == zones from bricks == */
   var zones = { CL:0.25, CR:0.75, MID:0.50 };
 
   function computeZones(){
@@ -44,59 +45,75 @@
     var b3 = document.querySelector(".bt3").getBoundingClientRect();
     var l1 = document.querySelector(".bl1").getBoundingClientRect();
     var l2 = document.querySelector(".bl2").getBoundingClientRect();
-    zones.CL  = ((b1.right + b2.left)/2 - hR.left) / hR.width;
-    zones.CR  = ((b2.right + b3.left)/2 - hR.left) / hR.width;
-    zones.MID = ((l1.bottom + l2.top)/2  - hR.top)  / hR.height;
+    zones.CL  = ((b1.right + b2.left) / 2 - hR.left) / hR.width;
+    zones.CR  = ((b2.right + b3.left) / 2 - hR.left) / hR.width;
+    zones.MID = ((l1.bottom + l2.top) / 2  - hR.top)  / hR.height;
     console.log("Zones:", JSON.stringify(zones));
   }
 
   window.addEventListener("load", function(){ resizeCanvas(); computeZones(); });
 
-  /* ══════════════════════════════════════════
-     PRIME AUDIO + SPEECH ON FIRST USER GESTURE
-     ══════════════════════════════════════════ */
-  function primeAudio(){
+  /* ================================================================
+     AGGRESSIVE AUDIO + SPEECH PRIMING
+     ================================================================ */
+  function primeAllAudio(){
     if(!globalAudioCtx){
       try{
         var AC = window.AudioContext || window.webkitAudioContext;
-        if(AC) globalAudioCtx = new AC();
-        console.log("AudioContext primed, state:", globalAudioCtx.state);
-      }catch(e){ console.warn("AudioContext prime failed:", e); }
+        if(AC){ globalAudioCtx = new AC(); }
+      }catch(e){ console.warn("AC create fail:", e); }
     }
     if(globalAudioCtx && globalAudioCtx.state === "suspended"){
       try{ globalAudioCtx.resume(); }catch(e){}
     }
+    if(globalAudioCtx && !audioPrimed){
+      try{
+        var sb = globalAudioCtx.createBuffer(1, 1, globalAudioCtx.sampleRate);
+        var ss = globalAudioCtx.createBufferSource();
+        ss.buffer = sb;
+        ss.connect(globalAudioCtx.destination);
+        ss.start();
+        audioPrimed = true;
+        console.log("AudioContext FULLY unlocked, state:", globalAudioCtx.state);
+      }catch(e){ console.warn("AC silent play fail:", e); }
+    }
+    if(typeof speechSynthesis !== "undefined"){
+      try{
+        speechSynthesis.cancel();
+        var u = new SpeechSynthesisUtterance(" ");
+        u.volume = 0.01;
+        u.rate   = 10;
+        u.lang   = "it-IT";
+        speechSynthesis.speak(u);
+        console.log("SpeechSynthesis primed");
+      }catch(e){ console.warn("Speech prime fail:", e); }
+    }
   }
 
-  function primeSpeech(){
-    if(typeof speechSynthesis === "undefined") return;
-    try{
-      var u = new SpeechSynthesisUtterance("");
-      u.volume = 0;
-      u.rate = 1;
-      speechSynthesis.speak(u);
-      console.log("SpeechSynthesis primed");
-    }catch(e){ console.warn("Speech prime failed:", e); }
-  }
+  /* prime on multiple gesture types for max compat */
+  document.addEventListener("touchend", primeAllAudio, {once: true});
+  document.addEventListener("click",    primeAllAudio, {once: true});
 
-  /* ── pointer helper ───────────────────── */
+  /* also prime on every hearth interaction */
+  hearth.addEventListener("touchend", function(){ primeAllAudio(); }, false);
+  hearth.addEventListener("click",    function(){ primeAllAudio(); }, false);
+
+  /* == pointer helper == */
   function ptrXY(e){
     var r = canvas.getBoundingClientRect();
     var t = e.touches ? e.touches[0] : e;
     return { x: t.clientX - r.left, y: t.clientY - r.top };
   }
 
-  /* ── activate + prime on first tap ────── */
+  /* == activate on first tap == */
   hearth.addEventListener("pointerdown", function(){
     if(!activated && !fireOn){
       activated = true;
       promptEl.classList.add("visible");
-      primeAudio();
-      primeSpeech();
     }
   });
 
-  /* ── drawing ──────────────────────────── */
+  /* == drawing == */
   function startDraw(e){
     if(!activated || fireOn) return;
     e.preventDefault();
@@ -129,89 +146,90 @@
   canvas.addEventListener("touchmove",  moveDraw,  {passive:false});
   canvas.addEventListener("touchend",   endDraw);
 
-  /* ── ember trail ──────────────────────── */
+  /* == ember trail == */
   function drawEmber(p){
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
-    var g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,14);
-    g.addColorStop(0,"rgba(255,100,0,0.9)");
-    g.addColorStop(0.4,"rgba(220,40,0,0.5)");
-    g.addColorStop(1,"rgba(100,0,0,0)");
+    var g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 14);
+    g.addColorStop(0, "rgba(255,100,0,0.9)");
+    g.addColorStop(0.4, "rgba(220,40,0,0.5)");
+    g.addColorStop(1, "rgba(100,0,0,0)");
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(p.x,p.y,14,0,Math.PI*2); ctx.fill();
-    var g2 = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,5);
-    g2.addColorStop(0,"rgba(255,220,180,1)");
-    g2.addColorStop(1,"rgba(255,80,0,0)");
+    ctx.beginPath(); ctx.arc(p.x, p.y, 14, 0, Math.PI * 2); ctx.fill();
+    var g2 = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 5);
+    g2.addColorStop(0, "rgba(255,220,180,1)");
+    g2.addColorStop(1, "rgba(255,80,0,0)");
     ctx.fillStyle = g2;
-    ctx.beginPath(); ctx.arc(p.x,p.y,5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
 
-  /* ── fade trail ───────────────────────── */
+  /* == fade trail == */
   function fadeTrail(cb){
     var n = 0;
     function step(){
       n++;
-      if(n > 30){ ctx.clearRect(0,0,canvas.width,canvas.height); if(cb) cb(); return; }
+      if(n > 30){ ctx.clearRect(0, 0, canvas.width, canvas.height); if(cb) cb(); return; }
       ctx.save();
       ctx.globalCompositeOperation = "destination-out";
       ctx.fillStyle = "rgba(0,0,0,0.07)";
-      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
       requestAnimationFrame(step);
     }
     step();
   }
 
-  /* ── zone H recognition ───────────────── */
+  /* == zone H recognition == */
   var BAND = 0.14;
 
-  function zoneDensity(pts,W,H,x0f,x1f,y0f,y1f){
-    var x0=x0f*W, x1=x1f*W, y0=y0f*H, y1=y1f*H;
-    var n=0;
-    for(var i=0;i<pts.length;i++){
-      if(pts[i].x>=x0 && pts[i].x<x1 && pts[i].y>=y0 && pts[i].y<y1) n++;
+  function zoneDensity(pts, W, H, x0f, x1f, y0f, y1f){
+    var x0 = x0f * W, x1 = x1f * W, y0 = y0f * H, y1 = y1f * H;
+    var n = 0;
+    for(var i = 0; i < pts.length; i++){
+      if(pts[i].x >= x0 && pts[i].x < x1 && pts[i].y >= y0 && pts[i].y < y1) n++;
     }
-    var a=(x1-x0)*(y1-y0);
-    return a>0 ? n/a : 0;
+    var a = (x1 - x0) * (y1 - y0);
+    return a > 0 ? n / a : 0;
   }
 
   function checkPassword(){
     var all = [];
-    for(var s=0;s<strokes.length;s++)
-      for(var p=0;p<strokes[s].length;p++)
+    for(var s = 0; s < strokes.length; s++){
+      for(var p = 0; p < strokes[s].length; p++){
         all.push(strokes[s][p]);
-
+      }
+    }
     if(all.length < 20){ resetScene(); return; }
 
-    var W=canvas.width, H=canvas.height;
-    var CL=zones.CL, CR=zones.CR, MID=zones.MID;
-    var MT=Math.max(0, MID-BAND), MB=Math.min(1, MID+BAND);
+    var W = canvas.width, H = canvas.height;
+    var CL = zones.CL, CR = zones.CR, MID = zones.MID;
+    var MT = Math.max(0, MID - BAND), MB = Math.min(1, MID + BAND);
 
-    var score=0;
+    var score = 0;
 
-    var LT=zoneDensity(all,W,H,0,CL,0,MT);
-    var CT=zoneDensity(all,W,H,CL,CR,0,MT);
-    var RT=zoneDensity(all,W,H,CR,1,0,MT);
-    var LM=zoneDensity(all,W,H,0,CL,MT,MB);
-    var CM=zoneDensity(all,W,H,CL,CR,MT,MB);
-    var RM=zoneDensity(all,W,H,CR,1,MT,MB);
-    var LB=zoneDensity(all,W,H,0,CL,MB,1);
-    var CB=zoneDensity(all,W,H,CL,CR,MB,1);
-    var RB=zoneDensity(all,W,H,CR,1,MB,1);
+    var LT = zoneDensity(all, W, H, 0, CL, 0, MT);
+    var CT = zoneDensity(all, W, H, CL, CR, 0, MT);
+    var RT = zoneDensity(all, W, H, CR, 1, 0, MT);
+    var LM = zoneDensity(all, W, H, 0, CL, MT, MB);
+    var CM = zoneDensity(all, W, H, CL, CR, MT, MB);
+    var RM = zoneDensity(all, W, H, CR, 1, MT, MB);
+    var LB = zoneDensity(all, W, H, 0, CL, MB, 1);
+    var CB = zoneDensity(all, W, H, CL, CR, MB, 1);
+    var RB = zoneDensity(all, W, H, CR, 1, MB, 1);
 
-    var maxD=Math.max(LT,CT,RT,LM,CM,RM,LB,CB,RB);
-    var inkTh=maxD*0.15, empTh=maxD*0.25;
+    var maxD = Math.max(LT, CT, RT, LM, CM, RM, LB, CB, RB);
+    var inkTh = maxD * 0.15, empTh = maxD * 0.25;
 
-    if(LT>inkTh) score++;
-    if(LM>inkTh) score++;
-    if(LB>inkTh) score++;
-    if(RT>inkTh) score++;
-    if(RM>inkTh) score++;
-    if(RB>inkTh) score++;
-    if(CM>inkTh) score++;
-    if(CT<empTh) score++;
-    if(CB<empTh) score++;
+    if(LT > inkTh) score++;
+    if(LM > inkTh) score++;
+    if(LB > inkTh) score++;
+    if(RT > inkTh) score++;
+    if(RM > inkTh) score++;
+    if(RB > inkTh) score++;
+    if(CM > inkTh) score++;
+    if(CT < empTh) score++;
+    if(CB < empTh) score++;
 
     console.log("H score: " + score + "/9");
 
@@ -227,17 +245,21 @@
     });
   }
 
-  /* ═══════════════════════════════════════
+  /* ================================================================
      FIRE IGNITION
-     ═══════════════════════════════════════ */
+     ================================================================ */
   function ignite(){
     fireOn = true;
     console.log("IGNITE: starting");
     promptEl.classList.remove("visible");
-    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for(var i=0;i<logs.length;i++) logs[i].classList.add("burning");
-    for(var j=0;j<bricks.length;j++) bricks[j].classList.add("warm");
+    if(globalAudioCtx && globalAudioCtx.state === "suspended"){
+      try{ globalAudioCtx.resume(); }catch(e){}
+    }
+
+    for(var i = 0; i < logs.length; i++) logs[i].classList.add("burning");
+    for(var j = 0; j < bricks.length; j++) bricks[j].classList.add("warm");
     glow.classList.add("active");
     console.log("IGNITE: CSS applied (" + logs.length + " logs)");
 
@@ -248,118 +270,119 @@
     catch(e){ console.error("Crackling error:", e); }
 
     setTimeout(function(){
-      try{ startNarration(); console.log("IGNITE: narration OK"); }
+      try{ startNarration(); console.log("IGNITE: narration launched"); }
       catch(e){ console.error("Narration error:", e); }
     }, 2500);
   }
 
-  /* ═══════════════════════════════════════
-     FIRE PARTICLES (clearRect = logs visible!)
-     ═══════════════════════════════════════ */
+  /* ================================================================
+     FIRE PARTICLES (clearRect = transparent = logs visible)
+     ================================================================ */
   function Particle(type){
-    var W=canvas.width, H=canvas.height;
+    var W = canvas.width, H = canvas.height;
     this.type = type;
-    this.x = W*(0.12+Math.random()*0.76);
-    this.y = H*(0.68+Math.random()*0.20);
-    if(type==="flame"){
-      this.size=6+Math.random()*18;
-      this.vx=(Math.random()-0.5)*0.8;
-      this.vy=-(1.0+Math.random()*2.5);
-      this.maxLife=50+Math.random()*40;
+    this.x = W * (0.12 + Math.random() * 0.76);
+    this.y = H * (0.68 + Math.random() * 0.20);
+    if(type === "flame"){
+      this.size = 6 + Math.random() * 18;
+      this.vx = (Math.random() - 0.5) * 0.8;
+      this.vy = -(1.0 + Math.random() * 2.5);
+      this.maxLife = 50 + Math.random() * 40;
     } else {
-      this.size=1.5+Math.random()*3;
-      this.vx=(Math.random()-0.5)*1.2;
-      this.vy=-(0.8+Math.random()*2.0);
-      this.maxLife=70+Math.random()*60;
+      this.size = 1.5 + Math.random() * 3;
+      this.vx = (Math.random() - 0.5) * 1.2;
+      this.vy = -(0.8 + Math.random() * 2.0);
+      this.maxLife = 70 + Math.random() * 60;
     }
-    this.life=0;
+    this.life = 0;
   }
 
   function updateP(p){
     p.life++;
-    p.x += p.vx + (Math.random()-0.5)*0.6;
+    p.x += p.vx + (Math.random() - 0.5) * 0.6;
     p.y += p.vy;
     p.vy *= 0.995;
-    if(p.type==="flame") p.size*=0.985;
+    if(p.type === "flame") p.size *= 0.985;
     return p.life < p.maxLife && p.size > 0.5;
   }
 
   function drawP(p){
-    var t=p.life/p.maxLife;
-    var r,g,b,a;
-    if(p.type==="flame"){
-      if(t<0.15){r=255;g=240;b=200;a=0.9;}
-      else if(t<0.4){r=255;g=200;b=50;a=0.8-t*0.5;}
-      else if(t<0.7){r=255;g=120;b=20;a=0.6-t*0.4;}
-      else{r=200;g=40;b=10;a=Math.max(0,0.4-t*0.4);}
+    var t = p.life / p.maxLife;
+    var r, g, b, a;
+    if(p.type === "flame"){
+      if(t < 0.15){ r = 255; g = 240; b = 200; a = 0.9; }
+      else if(t < 0.4){ r = 255; g = 200; b = 50; a = 0.8 - t * 0.5; }
+      else if(t < 0.7){ r = 255; g = 120; b = 20; a = 0.6 - t * 0.4; }
+      else { r = 200; g = 40; b = 10; a = Math.max(0, 0.4 - t * 0.4); }
       ctx.save();
-      ctx.globalCompositeOperation="lighter";
-      var gr=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size);
-      gr.addColorStop(0,"rgba("+r+","+g+","+b+","+a+")");
-      gr.addColorStop(0.4,"rgba("+r+","+Math.max(0,g-40)+","+Math.max(0,b-10)+","+(a*0.6)+")");
-      gr.addColorStop(1,"rgba("+Math.max(0,r-60)+",0,0,0)");
-      ctx.fillStyle=gr;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();
+      ctx.globalCompositeOperation = "lighter";
+      var gr = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+      gr.addColorStop(0, "rgba(" + r + "," + g + "," + b + "," + a + ")");
+      gr.addColorStop(0.4, "rgba(" + r + "," + Math.max(0, g - 40) + "," + Math.max(0, b - 10) + "," + (a * 0.6) + ")");
+      gr.addColorStop(1, "rgba(" + Math.max(0, r - 60) + ",0,0,0)");
+      ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     } else {
-      a=Math.max(0,1-t);
+      a = Math.max(0, 1 - t);
       ctx.save();
-      ctx.globalCompositeOperation="lighter";
-      var gr2=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size);
-      gr2.addColorStop(0,"rgba(255,220,150,"+a+")");
-      gr2.addColorStop(0.5,"rgba(255,140,40,"+(a*0.6)+")");
-      gr2.addColorStop(1,"rgba(200,60,0,0)");
-      ctx.fillStyle=gr2;
-      ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();
+      ctx.globalCompositeOperation = "lighter";
+      var gr2 = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+      gr2.addColorStop(0, "rgba(255,220,150," + a + ")");
+      gr2.addColorStop(0.5, "rgba(255,140,40," + (a * 0.6) + ")");
+      gr2.addColorStop(1, "rgba(200,60,0,0)");
+      ctx.fillStyle = gr2;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
   }
 
   function startFireAnimation(){
-    var W=canvas.width, H=canvas.height;
+    var W = canvas.width, H = canvas.height;
     function loop(){
-      /* CLEAR → canvas transparent → logs visible underneath */
-      ctx.clearRect(0,0,W,H);
+      ctx.clearRect(0, 0, W, H);
 
-      for(var i=0;i<4;i++) particles.push(new Particle("flame"));
-      if(Math.random()<0.3) particles.push(new Particle("ember"));
+      for(var i = 0; i < 4; i++) particles.push(new Particle("flame"));
+      if(Math.random() < 0.3) particles.push(new Particle("ember"));
 
-      var alive=[];
-      for(var j=0;j<particles.length;j++){
+      var alive = [];
+      for(var j = 0; j < particles.length; j++){
         if(updateP(particles[j])){
           drawP(particles[j]);
           alive.push(particles[j]);
         }
       }
-      particles=alive;
+      particles = alive;
       requestAnimationFrame(loop);
     }
     loop();
   }
 
-  /* ═══════════════════════════════════════
+  /* ================================================================
      CRACKLING SOUND
-     ═══════════════════════════════════════ */
+     ================================================================ */
   function startCrackling(){
     var a = globalAudioCtx;
     if(!a){
       var AC = window.AudioContext || window.webkitAudioContext;
-      if(!AC){ console.warn("No AudioContext"); return; }
-      try{ a = new AC(); }catch(e){ console.warn("AudioContext create failed:", e); return; }
+      if(!AC){ console.warn("No AudioContext available"); return; }
+      try{ a = new AC(); globalAudioCtx = a; }catch(e){ console.warn("AC fail:", e); return; }
     }
     if(a.state === "suspended"){
       try{ a.resume(); }catch(e){}
     }
 
-    var len = 2*a.sampleRate;
+    console.log("Crackling: AC state=" + a.state + " sampleRate=" + a.sampleRate);
+
+    var len = 2 * a.sampleRate;
 
     /* brown noise rumble */
     var buf = a.createBuffer(1, len, a.sampleRate);
     var d = buf.getChannelData(0);
     var last = 0;
-    for(var i=0; i<len; i++){
-      var w = Math.random()*2 - 1;
-      d[i] = (last + 0.02*w) / 1.02;
+    for(var i = 0; i < len; i++){
+      var w = Math.random() * 2 - 1;
+      d[i] = (last + 0.02 * w) / 1.02;
       last = d[i];
       d[i] *= 3.5;
     }
@@ -379,7 +402,7 @@
     /* hiss */
     var hBuf = a.createBuffer(1, len, a.sampleRate);
     var hd = hBuf.getChannelData(0);
-    for(var k=0; k<len; k++) hd[k] = Math.random()*2-1;
+    for(var k = 0; k < len; k++) hd[k] = Math.random() * 2 - 1;
     var hSrc = a.createBufferSource();
     hSrc.buffer = hBuf;
     hSrc.loop = true;
@@ -398,26 +421,26 @@
     function pop(){
       try{
         var now = a.currentTime;
-        var pL = Math.floor(a.sampleRate*(0.01+Math.random()*0.04));
+        var pL = Math.floor(a.sampleRate * (0.01 + Math.random() * 0.04));
         var pB = a.createBuffer(1, pL, a.sampleRate);
         var pd = pB.getChannelData(0);
-        for(var i=0; i<pL; i++) pd[i] = Math.random()*2-1;
+        for(var pi = 0; pi < pL; pi++) pd[pi] = Math.random() * 2 - 1;
         var pS = a.createBufferSource();
         pS.buffer = pB;
         var pBP = a.createBiquadFilter();
         pBP.type = "bandpass";
-        pBP.frequency.value = 600+Math.random()*3000;
-        pBP.Q.value = 3+Math.random()*12;
+        pBP.frequency.value = 600 + Math.random() * 3000;
+        pBP.Q.value = 3 + Math.random() * 12;
         var pG = a.createGain();
-        pG.gain.setValueAtTime(0.12+Math.random()*0.22, now);
-        pG.gain.exponentialRampToValueAtTime(0.001, now+0.02+Math.random()*0.06);
+        pG.gain.setValueAtTime(0.12 + Math.random() * 0.22, now);
+        pG.gain.exponentialRampToValueAtTime(0.001, now + 0.02 + Math.random() * 0.06);
         pS.connect(pBP);
         pBP.connect(pG);
         pG.connect(a.destination);
         pS.start(now);
-        pS.stop(now+0.1);
+        pS.stop(now + 0.1);
       }catch(e){}
-      if(fireOn) setTimeout(pop, 80+Math.random()*500);
+      if(fireOn) setTimeout(pop, 80 + Math.random() * 500);
     }
     setTimeout(pop, 400);
 
@@ -425,29 +448,29 @@
     function crack(){
       try{
         var now = a.currentTime;
-        var cL = Math.floor(a.sampleRate*0.06);
+        var cL = Math.floor(a.sampleRate * 0.06);
         var cB = a.createBuffer(1, cL, a.sampleRate);
         var cd = cB.getChannelData(0);
-        var v = 0.5+Math.random()*0.5;
-        for(var i=0; i<cL; i++){ cd[i]=(Math.random()*2-1)*v; v*=0.997; }
+        var v = 0.5 + Math.random() * 0.5;
+        for(var ci = 0; ci < cL; ci++){ cd[ci] = (Math.random() * 2 - 1) * v; v *= 0.997; }
         var cS = a.createBufferSource();
         cS.buffer = cB;
         var cG = a.createGain();
-        cG.gain.setValueAtTime(0.3+Math.random()*0.15, now);
-        cG.gain.exponentialRampToValueAtTime(0.001, now+0.08);
+        cG.gain.setValueAtTime(0.3 + Math.random() * 0.15, now);
+        cG.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
         cS.connect(cG);
         cG.connect(a.destination);
         cS.start(now);
-        cS.stop(now+0.1);
+        cS.stop(now + 0.1);
       }catch(e){}
-      if(fireOn) setTimeout(crack, 1500+Math.random()*4000);
+      if(fireOn) setTimeout(crack, 1500 + Math.random() * 4000);
     }
     setTimeout(crack, 1000);
   }
 
-  /* ═══════════════════════════════════════
-     NARRATION (Web Speech API)
-     ═══════════════════════════════════════ */
+  /* ================================================================
+     NARRATION with fallback 🔊 button
+     ================================================================ */
   var italianVoice = null;
   var resumeTimer  = null;
 
@@ -456,15 +479,15 @@
     try{
       var v = speechSynthesis.getVoices();
       if(!v || !v.length) return;
-      for(var i=0; i<v.length; i++){
+      for(var i = 0; i < v.length; i++){
         if(v[i].lang === "it-IT"){ italianVoice = v[i]; break; }
       }
       if(!italianVoice){
-        for(var j=0; j<v.length; j++){
-          if(v[j].lang && v[j].lang.indexOf("it")===0){ italianVoice = v[j]; break; }
+        for(var j = 0; j < v.length; j++){
+          if(v[j].lang && v[j].lang.indexOf("it") === 0){ italianVoice = v[j]; break; }
         }
       }
-      if(italianVoice) console.log("Voice found:", italianVoice.name, italianVoice.lang);
+      if(italianVoice) console.log("Voice:", italianVoice.name, italianVoice.lang);
     }catch(e){}
   }
 
@@ -483,45 +506,75 @@
     resumeTimer = setTimeout(keepAlive, 8000);
   }
 
+  function doSpeak(){
+    if(!fireOn) return;
+    if(!italianVoice) findVoice();
+    try{
+      speechSynthesis.cancel();
+      var utter = new SpeechSynthesisUtterance(STORY);
+      utter.lang   = "it-IT";
+      utter.rate   = 0.78;
+      utter.pitch  = 0.7;
+      utter.volume = 0.85;
+      if(italianVoice) utter.voice = italianVoice;
+
+      utter.onend = function(){
+        clearTimeout(resumeTimer);
+        console.log("Narration ended, loop in 4s");
+        setTimeout(function(){ if(fireOn) doSpeak(); }, 4000);
+      };
+      utter.onerror = function(ev){
+        clearTimeout(resumeTimer);
+        console.warn("Speech error:", ev.error);
+        setTimeout(function(){ if(fireOn) doSpeak(); }, 2000);
+      };
+
+      speechSynthesis.speak(utter);
+      console.log("Speaking now...");
+      clearTimeout(resumeTimer);
+      keepAlive();
+    }catch(e){ console.error("Speak error:", e); }
+  }
+
+  /* fallback button if auto-narration fails */
+  function showListenButton(){
+    var old = document.getElementById("listenBtn");
+    if(old) old.remove();
+
+    var btn = document.createElement("div");
+    btn.id = "listenBtn";
+    btn.innerHTML = "&#x1F50A;";
+    btn.style.cssText = "position:absolute;bottom:50%;left:50%;transform:translate(-50%,50%);z-index:10;font-size:48px;cursor:pointer;opacity:0.8;filter:drop-shadow(0 0 10px rgba(255,150,50,0.7));transition:opacity 0.3s;";
+    hearth.appendChild(btn);
+    console.log("Listen button shown");
+
+    function onTap(e){
+      e.preventDefault();
+      e.stopPropagation();
+      btn.style.opacity = "0";
+      setTimeout(function(){ btn.remove(); }, 300);
+      primeAllAudio();
+      setTimeout(function(){ doSpeak(); }, 150);
+    }
+    btn.addEventListener("touchend", onTap, false);
+    btn.addEventListener("click", onTap, false);
+  }
+
   function startNarration(){
     if(typeof speechSynthesis === "undefined"){
       console.warn("No speechSynthesis");
       return;
     }
 
-    try{ speechSynthesis.cancel(); }catch(e){}
+    doSpeak();
 
-    if(!italianVoice) findVoice();
-
-    function speak(){
-      if(!fireOn) return;
-      try{
-        var utter = new SpeechSynthesisUtterance(STORY);
-        utter.lang   = "it-IT";
-        utter.rate   = 0.78;
-        utter.pitch  = 0.7;
-        utter.volume = 0.85;
-        if(italianVoice) utter.voice = italianVoice;
-
-        utter.onend = function(){
-          clearTimeout(resumeTimer);
-          console.log("Narration ended, looping in 4s...");
-          setTimeout(function(){ if(fireOn) speak(); }, 4000);
-        };
-        utter.onerror = function(ev){
-          clearTimeout(resumeTimer);
-          console.warn("Speech error:", ev.error);
-          setTimeout(function(){ if(fireOn) speak(); }, 2000);
-        };
-
-        speechSynthesis.speak(utter);
-        console.log("Speaking now...");
-        clearTimeout(resumeTimer);
-        keepAlive();
-      }catch(e){ console.error("Speak error:", e); }
-    }
-
-    speak();
+    /* check after 2s if speech actually started; if not show button */
+    setTimeout(function(){
+      if(typeof speechSynthesis !== "undefined" && !speechSynthesis.speaking){
+        console.warn("Speech did not start, showing fallback button");
+        showListenButton();
+      }
+    }, 2000);
   }
 
 })();
