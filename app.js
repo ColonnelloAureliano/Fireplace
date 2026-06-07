@@ -2,13 +2,13 @@
   "use strict";
 
   /* ── DOM ──────────────────────────────── */
-  var hearth  = document.getElementById("hearth");
-  var canvas  = document.getElementById("drawCanvas");
-  var ctx     = canvas.getContext("2d");
-  var promptEl= document.getElementById("prompt");
-  var glow    = document.getElementById("glow");
-  var logs    = document.querySelectorAll(".log");
-  var bricks  = document.querySelectorAll(".brick");
+  var hearth   = document.getElementById("hearth");
+  var canvas   = document.getElementById("drawCanvas");
+  var ctx      = canvas.getContext("2d");
+  var promptEl = document.getElementById("prompt");
+  var glow     = document.getElementById("glow");
+  var logs     = document.querySelectorAll(".log");
+  var bricks   = document.querySelectorAll(".brick");
 
   /* ── state ────────────────────────────── */
   var activated     = false;
@@ -19,6 +19,7 @@
   var idleTimer     = null;
   var IDLE_MS       = 1200;
   var particles     = [];
+  var globalAudioCtx = null;
 
   /* ── narration text ───────────────────── */
   var STORY = "L\u2019Isola Viscontea, situata a Lecco dove il Lago di Como torna a essere il fiume Adda, \u00e8 un piccolo gioiello di origine artificiale: nacque nel quindicesimo secolo come accumulo di detriti e materiali di scavo durante i lavori di costruzione e ampliamento del vicino Ponte Azzone Visconti. Sulla sua funzione originaria ci sono pareri discordanti: alcuni storici pensano fosse un piccolo avamposto di controllo per la navigazione e i dazi sul fiume, altri una semplice casa di pescatori.";
@@ -51,6 +52,33 @@
 
   window.addEventListener("load", function(){ resizeCanvas(); computeZones(); });
 
+  /* ══════════════════════════════════════════
+     PRIME AUDIO + SPEECH ON FIRST USER GESTURE
+     ══════════════════════════════════════════ */
+  function primeAudio(){
+    if(!globalAudioCtx){
+      try{
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if(AC) globalAudioCtx = new AC();
+        console.log("AudioContext primed, state:", globalAudioCtx.state);
+      }catch(e){ console.warn("AudioContext prime failed:", e); }
+    }
+    if(globalAudioCtx && globalAudioCtx.state === "suspended"){
+      try{ globalAudioCtx.resume(); }catch(e){}
+    }
+  }
+
+  function primeSpeech(){
+    if(typeof speechSynthesis === "undefined") return;
+    try{
+      var u = new SpeechSynthesisUtterance("");
+      u.volume = 0;
+      u.rate = 1;
+      speechSynthesis.speak(u);
+      console.log("SpeechSynthesis primed");
+    }catch(e){ console.warn("Speech prime failed:", e); }
+  }
+
   /* ── pointer helper ───────────────────── */
   function ptrXY(e){
     var r = canvas.getBoundingClientRect();
@@ -58,11 +86,13 @@
     return { x: t.clientX - r.left, y: t.clientY - r.top };
   }
 
-  /* ── activate on tap ──────────────────── */
+  /* ── activate + prime on first tap ────── */
   hearth.addEventListener("pointerdown", function(){
     if(!activated && !fireOn){
       activated = true;
       promptEl.classList.add("visible");
+      primeAudio();
+      primeSpeech();
     }
   });
 
@@ -198,7 +228,7 @@
   }
 
   /* ═══════════════════════════════════════
-     FIRE IGNITION (with try/catch on each subsystem)
+     FIRE IGNITION
      ═══════════════════════════════════════ */
   function ignite(){
     fireOn = true;
@@ -206,28 +236,26 @@
     promptEl.classList.remove("visible");
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
-    /* CSS effects – always safe */
     for(var i=0;i<logs.length;i++) logs[i].classList.add("burning");
     for(var j=0;j<bricks.length;j++) bricks[j].classList.add("warm");
     glow.classList.add("active");
-    console.log("IGNITE: CSS effects applied");
+    console.log("IGNITE: CSS applied (" + logs.length + " logs)");
 
-    /* fire animation */
-    try{ startFireAnimation(); console.log("IGNITE: fire anim OK"); }
-    catch(e){ console.error("Fire anim error:", e); }
+    try{ startFireAnimation(); console.log("IGNITE: fire OK"); }
+    catch(e){ console.error("Fire error:", e); }
 
-    /* crackling */
     try{ startCrackling(); console.log("IGNITE: crackling OK"); }
     catch(e){ console.error("Crackling error:", e); }
 
-    /* narration after delay */
     setTimeout(function(){
       try{ startNarration(); console.log("IGNITE: narration OK"); }
       catch(e){ console.error("Narration error:", e); }
     }, 2500);
   }
 
-  /* ── fire particles ───────────────────── */
+  /* ═══════════════════════════════════════
+     FIRE PARTICLES (clearRect = logs visible!)
+     ═══════════════════════════════════════ */
   function Particle(type){
     var W=canvas.width, H=canvas.height;
     this.type = type;
@@ -290,11 +318,8 @@
   function startFireAnimation(){
     var W=canvas.width, H=canvas.height;
     function loop(){
-      ctx.save();
-      ctx.globalCompositeOperation="source-over";
-      ctx.fillStyle="rgba(3,2,1,0.18)";
-      ctx.fillRect(0,0,W,H);
-      ctx.restore();
+      /* CLEAR → canvas transparent → logs visible underneath */
+      ctx.clearRect(0,0,W,H);
 
       for(var i=0;i<4;i++) particles.push(new Particle("flame"));
       if(Math.random()<0.3) particles.push(new Particle("ember"));
@@ -312,61 +337,85 @@
     loop();
   }
 
-  /* ── crackling sound ──────────────────── */
+  /* ═══════════════════════════════════════
+     CRACKLING SOUND
+     ═══════════════════════════════════════ */
   function startCrackling(){
-    var AC = window.AudioContext || window.webkitAudioContext;
-    if(!AC){ console.warn("No AudioContext"); return; }
-    var a;
-    try{ a = new AC(); } catch(e){ console.warn("AudioContext failed:", e); return; }
+    var a = globalAudioCtx;
+    if(!a){
+      var AC = window.AudioContext || window.webkitAudioContext;
+      if(!AC){ console.warn("No AudioContext"); return; }
+      try{ a = new AC(); }catch(e){ console.warn("AudioContext create failed:", e); return; }
+    }
+    if(a.state === "suspended"){
+      try{ a.resume(); }catch(e){}
+    }
 
     var len = 2*a.sampleRate;
 
     /* brown noise rumble */
-    var buf = a.createBuffer(1,len,a.sampleRate);
+    var buf = a.createBuffer(1, len, a.sampleRate);
     var d = buf.getChannelData(0);
     var last = 0;
-    for(var i=0;i<len;i++){
-      var w = Math.random()*2-1;
-      d[i] = (last + 0.02*w)/1.02;
+    for(var i=0; i<len; i++){
+      var w = Math.random()*2 - 1;
+      d[i] = (last + 0.02*w) / 1.02;
       last = d[i];
       d[i] *= 3.5;
     }
     var src = a.createBufferSource();
-    src.buffer = buf; src.loop = true;
+    src.buffer = buf;
+    src.loop = true;
     var lp = a.createBiquadFilter();
-    lp.type="lowpass"; lp.frequency.value=180;
-    var rGain = a.createGain(); rGain.gain.value=0.25;
-    src.connect(lp); lp.connect(rGain); rGain.connect(a.destination);
+    lp.type = "lowpass";
+    lp.frequency.value = 180;
+    var rGain = a.createGain();
+    rGain.gain.value = 0.25;
+    src.connect(lp);
+    lp.connect(rGain);
+    rGain.connect(a.destination);
     src.start();
 
     /* hiss */
-    var hBuf = a.createBuffer(1,len,a.sampleRate);
+    var hBuf = a.createBuffer(1, len, a.sampleRate);
     var hd = hBuf.getChannelData(0);
-    for(var k=0;k<len;k++) hd[k]=Math.random()*2-1;
+    for(var k=0; k<len; k++) hd[k] = Math.random()*2-1;
     var hSrc = a.createBufferSource();
-    hSrc.buffer=hBuf; hSrc.loop=true;
+    hSrc.buffer = hBuf;
+    hSrc.loop = true;
     var bp = a.createBiquadFilter();
-    bp.type="bandpass"; bp.frequency.value=3000; bp.Q.value=2;
-    var hGain = a.createGain(); hGain.gain.value=0.06;
-    hSrc.connect(bp); bp.connect(hGain); hGain.connect(a.destination);
+    bp.type = "bandpass";
+    bp.frequency.value = 3000;
+    bp.Q.value = 2;
+    var hGain = a.createGain();
+    hGain.gain.value = 0.06;
+    hSrc.connect(bp);
+    bp.connect(hGain);
+    hGain.connect(a.destination);
     hSrc.start();
 
     /* pops */
     function pop(){
       try{
-        var now=a.currentTime;
-        var pL=Math.floor(a.sampleRate*(0.01+Math.random()*0.04));
-        var pB=a.createBuffer(1,pL,a.sampleRate);
-        var pd=pB.getChannelData(0);
-        for(var i=0;i<pL;i++) pd[i]=Math.random()*2-1;
-        var pS=a.createBufferSource(); pS.buffer=pB;
-        var pBP=a.createBiquadFilter();
-        pBP.type="bandpass"; pBP.frequency.value=600+Math.random()*3000; pBP.Q.value=3+Math.random()*12;
-        var pG=a.createGain();
-        pG.gain.setValueAtTime(0.12+Math.random()*0.22,now);
-        pG.gain.exponentialRampToValueAtTime(0.001,now+0.02+Math.random()*0.06);
-        pS.connect(pBP); pBP.connect(pG); pG.connect(a.destination);
-        pS.start(now); pS.stop(now+0.1);
+        var now = a.currentTime;
+        var pL = Math.floor(a.sampleRate*(0.01+Math.random()*0.04));
+        var pB = a.createBuffer(1, pL, a.sampleRate);
+        var pd = pB.getChannelData(0);
+        for(var i=0; i<pL; i++) pd[i] = Math.random()*2-1;
+        var pS = a.createBufferSource();
+        pS.buffer = pB;
+        var pBP = a.createBiquadFilter();
+        pBP.type = "bandpass";
+        pBP.frequency.value = 600+Math.random()*3000;
+        pBP.Q.value = 3+Math.random()*12;
+        var pG = a.createGain();
+        pG.gain.setValueAtTime(0.12+Math.random()*0.22, now);
+        pG.gain.exponentialRampToValueAtTime(0.001, now+0.02+Math.random()*0.06);
+        pS.connect(pBP);
+        pBP.connect(pG);
+        pG.connect(a.destination);
+        pS.start(now);
+        pS.stop(now+0.1);
       }catch(e){}
       if(fireOn) setTimeout(pop, 80+Math.random()*500);
     }
@@ -375,25 +424,30 @@
     /* cracks */
     function crack(){
       try{
-        var now=a.currentTime;
-        var cL=Math.floor(a.sampleRate*0.06);
-        var cB=a.createBuffer(1,cL,a.sampleRate);
-        var cd=cB.getChannelData(0);
-        var v=0.5+Math.random()*0.5;
-        for(var i=0;i<cL;i++){ cd[i]=(Math.random()*2-1)*v; v*=0.997; }
-        var cS=a.createBufferSource(); cS.buffer=cB;
-        var cG=a.createGain();
-        cG.gain.setValueAtTime(0.3+Math.random()*0.15,now);
-        cG.gain.exponentialRampToValueAtTime(0.001,now+0.08);
-        cS.connect(cG); cG.connect(a.destination);
-        cS.start(now); cS.stop(now+0.1);
+        var now = a.currentTime;
+        var cL = Math.floor(a.sampleRate*0.06);
+        var cB = a.createBuffer(1, cL, a.sampleRate);
+        var cd = cB.getChannelData(0);
+        var v = 0.5+Math.random()*0.5;
+        for(var i=0; i<cL; i++){ cd[i]=(Math.random()*2-1)*v; v*=0.997; }
+        var cS = a.createBufferSource();
+        cS.buffer = cB;
+        var cG = a.createGain();
+        cG.gain.setValueAtTime(0.3+Math.random()*0.15, now);
+        cG.gain.exponentialRampToValueAtTime(0.001, now+0.08);
+        cS.connect(cG);
+        cG.connect(a.destination);
+        cS.start(now);
+        cS.stop(now+0.1);
       }catch(e){}
       if(fireOn) setTimeout(crack, 1500+Math.random()*4000);
     }
     setTimeout(crack, 1000);
   }
 
-  /* ── narration ────────────────────────── */
+  /* ═══════════════════════════════════════
+     NARRATION (Web Speech API)
+     ═══════════════════════════════════════ */
   var italianVoice = null;
   var resumeTimer  = null;
 
@@ -402,15 +456,15 @@
     try{
       var v = speechSynthesis.getVoices();
       if(!v || !v.length) return;
-      for(var i=0;i<v.length;i++){
-        if(v[i].lang === "it-IT"){ italianVoice=v[i]; break; }
+      for(var i=0; i<v.length; i++){
+        if(v[i].lang === "it-IT"){ italianVoice = v[i]; break; }
       }
       if(!italianVoice){
-        for(var j=0;j<v.length;j++){
-          if(v[j].lang && v[j].lang.indexOf("it")===0){ italianVoice=v[j]; break; }
+        for(var j=0; j<v.length; j++){
+          if(v[j].lang && v[j].lang.indexOf("it")===0){ italianVoice = v[j]; break; }
         }
       }
-      if(italianVoice) console.log("Voice found:", italianVoice.name);
+      if(italianVoice) console.log("Voice found:", italianVoice.name, italianVoice.lang);
     }catch(e){}
   }
 
@@ -421,7 +475,7 @@
 
   function keepAlive(){
     try{
-      if(speechSynthesis.speaking && !speechSynthesis.paused){
+      if(typeof speechSynthesis !== "undefined" && speechSynthesis.speaking && !speechSynthesis.paused){
         speechSynthesis.pause();
         speechSynthesis.resume();
       }
@@ -430,9 +484,14 @@
   }
 
   function startNarration(){
-    if(typeof speechSynthesis === "undefined"){ console.warn("No speechSynthesis"); return; }
+    if(typeof speechSynthesis === "undefined"){
+      console.warn("No speechSynthesis");
+      return;
+    }
 
     try{ speechSynthesis.cancel(); }catch(e){}
+
+    if(!italianVoice) findVoice();
 
     function speak(){
       if(!fireOn) return;
@@ -446,14 +505,17 @@
 
         utter.onend = function(){
           clearTimeout(resumeTimer);
+          console.log("Narration ended, looping in 4s...");
           setTimeout(function(){ if(fireOn) speak(); }, 4000);
         };
-        utter.onerror = function(){
+        utter.onerror = function(ev){
           clearTimeout(resumeTimer);
+          console.warn("Speech error:", ev.error);
           setTimeout(function(){ if(fireOn) speak(); }, 2000);
         };
 
         speechSynthesis.speak(utter);
+        console.log("Speaking now...");
         clearTimeout(resumeTimer);
         keepAlive();
       }catch(e){ console.error("Speak error:", e); }
