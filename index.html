@@ -1,57 +1,45 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Il Caminetto</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <title>Caminetto</title>
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <div id="app">
-
+  <div id="scene">
+    <div id="mantel"></div>
     <div id="fireplace">
-      <div id="mantel"></div>
-
-      <div id="firebox">
-        <div id="bricks-container"></div>
-        <canvas id="canvas"></canvas>
-
-        <div id="logs-container">
-          <div class="log log1"></div>
-          <div class="log log2"></div>
-          <div class="log log3"></div>
-          <div class="log log4"></div>
-          <div class="log log5"></div>
-        </div>
-
-        <div id="fire-container" class="hidden">
-          <div class="flame flame1"></div>
-          <div class="flame flame2"></div>
-          <div class="flame flame3"></div>
-          <div class="flame flame4"></div>
-          <div class="flame flame5"></div>
-          <div class="ember ember1"></div>
-          <div class="ember ember2"></div>
-          <div class="ember ember3"></div>
-        </div>
-
-        <div id="orb" class="hidden"></div>
+      <div class="brick bt bt1"></div>
+      <div class="brick bt bt2"></div>
+      <div class="brick bt bt3"></div>
+      <div class="brick bl bl1"></div>
+      <div id="hearth">
+        <div id="soot"></div>
+        <div id="glow"></div>
+        <div class="log log1"><span class="grain"></span></div>
+        <div class="log log2"><span class="grain"></span></div>
+        <div class="log log3"><span class="grain"></span></div>
+        <div class="log log4"><span class="grain"></span></div>
+        <div class="log log5"><span class="grain"></span></div>
+        <div id="ash"></div>
+        <div id="prompt">Sai come accendermi</div>
+        <canvas id="drawCanvas"></canvas>
       </div>
-
-      <div id="hearth"></div>
+      <div class="brick br br1"></div>
+      <div class="brick bl bl2"></div>
+      <div class="brick br br2"></div>
+      <div class="brick bb bb1"></div>
+      <div class="brick bb bb2"></div>
+      <div class="brick bb bb3"></div>
     </div>
-
     <div id="tools">
-      <div class="tool tool-poker"></div>
-      <div class="tool tool-shovel"></div>
-      <div class="tool tool-tongs"></div>
+      <div class="tool poker"></div>
+      <div class="tool brush"></div>
+      <div class="tool shovel"></div>
+      <div class="tool-base"></div>
     </div>
-
-    <div id="message"></div>
-    <button id="clear-btn">Cancella</button>
   </div>
-
   <script src="app.js"></script>
 </body>
 </html>
