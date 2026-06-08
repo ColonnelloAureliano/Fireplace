@@ -1,9 +1,9 @@
 (function(){
   "use strict";
 
-  /* inject ember pulse animation */
+  /* inject red ember pulse animation */
   var styleEl = document.createElement("style");
-  styleEl.textContent = "@keyframes emberPulse{0%{transform:translate(-50%,-50%) scale(1);box-shadow:0 0 20px 8px rgba(255,120,20,0.6),0 0 40px 16px rgba(255,80,0,0.3),inset 0 -3px 6px rgba(0,0,0,0.3),inset 0 2px 4px rgba(255,255,200,0.3);}100%{transform:translate(-50%,-50%) scale(1.15);box-shadow:0 0 30px 12px rgba(255,120,20,0.9),0 0 60px 24px rgba(255,80,0,0.5),inset 0 -3px 6px rgba(0,0,0,0.3),inset 0 2px 4px rgba(255,255,200,0.4);}}";
+  styleEl.textContent = "@keyframes emberPulse{0%{transform:translate(-50%,-50%) scale(1);box-shadow:0 0 18px 6px rgba(220,20,0,0.6),0 0 36px 14px rgba(180,0,0,0.3),inset 0 -3px 6px rgba(0,0,0,0.4),inset 0 2px 4px rgba(255,180,120,0.3);}100%{transform:translate(-50%,-50%) scale(1.15);box-shadow:0 0 28px 10px rgba(220,20,0,0.9),0 0 56px 22px rgba(180,0,0,0.5),inset 0 -3px 6px rgba(0,0,0,0.4),inset 0 2px 4px rgba(255,180,120,0.4);}}";
   document.head.appendChild(styleEl);
 
   var hearth   = document.getElementById("hearth");
@@ -28,7 +28,6 @@
 
   var STORY = "L\u2019Isola Viscontea, situata a Lecco dove il Lago di Como torna a essere il fiume Adda, \u00e8 un piccolo gioiello di origine artificiale: nacque nel quindicesimo secolo come accumulo di detriti e materiali di scavo durante i lavori di costruzione e ampliamento del vicino Ponte Azzone Visconti. Sulla sua funzione originaria ci sono pareri discordanti: alcuni storici pensano fosse un piccolo avamposto di controllo per la navigazione e i dazi sul fiume, altri una semplice casa di pescatori.";
 
-  /* voice params: deep old man */
   var VOICE_RATE  = 0.75;
   var VOICE_PITCH = 0.6;
 
@@ -75,7 +74,6 @@
         ss.connect(globalAudioCtx.destination);
         ss.start();
         audioPrimed = true;
-        console.log("AudioContext unlocked");
       }catch(e){}
     }
   }
@@ -241,8 +239,14 @@
     try{ startFireAnimation(); }catch(e){ console.error("Fire err:", e); }
     try{ startCrackling(); }catch(e){ console.error("Crack err:", e); }
 
+    /*
+     * ALWAYS show ember button + try auto-narration.
+     * If auto works, onstart hides the button automatically.
+     * If auto fails, button stays visible for user tap.
+     */
     setTimeout(function(){
-      try{ tryAutoNarration(); }catch(e){ console.error("Narr err:", e); }
+      showListenButton();
+      try{ speakStory(); }catch(e){ console.error("Narr err:", e); }
     }, 2500);
   }
 
@@ -397,9 +401,10 @@
   var italianVoice = null;
   var resumeTimer  = null;
 
-  /* known male Italian TTS voice names across platforms */
   var MALE_NAMES = ["luca", "giorgio", "marco", "andrea", "paolo", "carlo",
-                    "cosimo", "google italiano", "male"];
+                    "cosimo", "diego", "google italiano", "male"];
+  var FEMALE_NAMES = ["alice", "federica", "elsa", "paola", "silvia", "anna",
+                      "francesca", "google", "female", "sara"];
 
   function findVoice(){
     if(typeof speechSynthesis === "undefined") return;
@@ -415,26 +420,41 @@
       }
       if(!itVoices.length) return;
 
-      /* try to find a male voice */
+      /* LOG ALL ITALIAN VOICES for debugging */
+      console.log("========== VOCI ITALIANE (" + itVoices.length + ") ==========");
+      for(var x = 0; x < itVoices.length; x++){
+        console.log("  " + x + ": " + itVoices[x].name + " [" + itVoices[x].lang + "]");
+      }
+      console.log("===============================================");
+
+      /* 1. try to find a male voice by name */
       for(var m = 0; m < MALE_NAMES.length; m++){
         for(var v = 0; v < itVoices.length; v++){
           if(itVoices[v].name.toLowerCase().indexOf(MALE_NAMES[m]) >= 0){
             italianVoice = itVoices[v];
-            console.log("Male voice:", italianVoice.name);
+            console.log("SELECTED male voice:", italianVoice.name);
             return;
           }
         }
       }
 
-      /* log all Italian voices for debug */
-      console.log("Italian voices (" + itVoices.length + "):");
-      for(var x = 0; x < itVoices.length; x++){
-        console.log("  " + itVoices[x].name + " [" + itVoices[x].lang + "]");
+      /* 2. try to find any voice that is NOT female */
+      for(var vi = 0; vi < itVoices.length; vi++){
+        var nm = itVoices[vi].name.toLowerCase();
+        var isFemale = false;
+        for(var f = 0; f < FEMALE_NAMES.length; f++){
+          if(nm.indexOf(FEMALE_NAMES[f]) >= 0){ isFemale = true; break; }
+        }
+        if(!isFemale){
+          italianVoice = itVoices[vi];
+          console.log("SELECTED non-female voice:", italianVoice.name);
+          return;
+        }
       }
 
-      /* fallback: last voice (often male on iOS) or first */
-      italianVoice = itVoices.length > 1 ? itVoices[itVoices.length - 1] : itVoices[0];
-      console.log("Fallback voice:", italianVoice.name);
+      /* 3. last resort: first voice */
+      italianVoice = itVoices[0];
+      console.log("FALLBACK voice:", italianVoice.name);
     }catch(e){}
   }
 
@@ -453,7 +473,6 @@
     resumeTimer = setTimeout(keepAlive, 8000);
   }
 
-  /* create utterance with nonno settings */
   function makeUtter(){
     if(!italianVoice) findVoice();
     var utter = new SpeechSynthesisUtterance(STORY);
@@ -465,10 +484,14 @@
 
     utter.onstart = function(){
       speechStarted = true;
-      console.log("Speech CONFIRMED started");
-      /* remove ember if still visible */
+      console.log("Speech CONFIRMED started with:", italianVoice ? italianVoice.name : "default");
+      /* auto-hide ember button */
       var old = document.getElementById("listenBtn");
-      if(old){ old.style.opacity = "0"; setTimeout(function(){ try{ old.remove(); }catch(x){} }, 400); }
+      if(old){
+        old.style.opacity = "0";
+        old.style.transform = "translate(-50%,-50%) scale(0.3)";
+        setTimeout(function(){ try{ old.remove(); }catch(ex){} }, 500);
+      }
     };
     utter.onend = function(){
       clearTimeout(resumeTimer);
@@ -491,34 +514,31 @@
     if(typeof speechSynthesis === "undefined") return;
     try{
       var utter = makeUtter();
-      /* NOTE: speechStarted is set ONLY in onstart callback, not here */
       speechSynthesis.speak(utter);
       clearTimeout(resumeTimer);
       keepAlive();
     }catch(e){}
   }
 
-  /* === GLOWING EMBER BUTTON === */
+  /* === RED GLOWING EMBER BUTTON === */
   function showListenButton(){
-    if(speechStarted) return;
     var old = document.getElementById("listenBtn");
     if(old) old.remove();
 
     var btn = document.createElement("div");
     btn.id = "listenBtn";
-    /* pure CSS incandescent ball - no emoji */
     btn.style.cssText = [
       "position:absolute",
       "top:38%",
       "left:50%",
-      "width:54px",
-      "height:54px",
+      "width:50px",
+      "height:50px",
       "transform:translate(-50%,-50%)",
       "z-index:10",
       "cursor:pointer",
       "border-radius:50%",
-      "background:radial-gradient(circle at 40% 35%, #fff8e0 0%, #ffcc33 15%, #ff8800 40%, #cc3300 70%, #661100 100%)",
-      "box-shadow:0 0 20px 8px rgba(255,120,20,0.6), 0 0 40px 16px rgba(255,80,0,0.3), inset 0 -3px 6px rgba(0,0,0,0.3), inset 0 2px 4px rgba(255,255,200,0.3)",
+      "background:radial-gradient(circle at 40% 35%, #ffd0a0 0%, #ee4422 25%, #cc1100 50%, #880000 75%, #440000 100%)",
+      "box-shadow:0 0 18px 6px rgba(220,20,0,0.6), 0 0 36px 14px rgba(180,0,0,0.3), inset 0 -3px 6px rgba(0,0,0,0.4), inset 0 2px 4px rgba(255,180,120,0.3)",
       "animation:emberPulse 1.2s ease-in-out infinite alternate",
       "transition:opacity 0.4s, transform 0.4s"
     ].join(";") + ";";
@@ -529,10 +549,10 @@
       e.preventDefault();
       e.stopPropagation();
       btn.style.opacity = "0";
+      btn.style.transform = "translate(-50%,-50%) scale(0.3)";
       btn.style.pointerEvents = "none";
-      setTimeout(function(){ try{ btn.remove(); }catch(ex){} }, 400);
+      setTimeout(function(){ try{ btn.remove(); }catch(ex){} }, 500);
 
-      /* DIRECT speak in gesture handler - no cancel, no setTimeout */
       if(typeof speechSynthesis !== "undefined"){
         try{
           var utter = makeUtter();
@@ -546,20 +566,6 @@
 
     btn.addEventListener("touchend", handleTap, false);
     btn.addEventListener("click", handleTap, false);
-  }
-
-  function tryAutoNarration(){
-    if(typeof speechSynthesis === "undefined") return;
-    console.log("Trying auto-narration...");
-    speakStory();
-
-    /* check after 2s if onstart fired */
-    setTimeout(function(){
-      if(!speechStarted){
-        console.warn("Auto-narration failed, showing ember");
-        showListenButton();
-      }
-    }, 2000);
   }
 
 })();
